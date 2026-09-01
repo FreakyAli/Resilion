@@ -33,7 +33,20 @@ internal sealed class TimeoutStrategy : Strategy
         try
         {
             timer = _timeProvider.CreateTimer(
-                static state => ((CancellationTokenSource)state!).Cancel(),
+                static state =>
+                {
+                    try
+                    {
+                        ((CancellationTokenSource)state!).Cancel();
+                    }
+                    catch
+                    {
+                        // Suppress exceptions from timer callback to prevent process termination.
+                        // CancellationTokenSource.Cancel() can throw if user cancellation callbacks throw.
+                        // We can't log here safely on a thread pool timer thread, but the timeout has
+                        // already been triggered via cancellation request, so suppressing is acceptable.
+                    }
+                },
                 linkedCts,
                 timeout,
                 System.Threading.Timeout.InfiniteTimeSpan);
@@ -91,7 +104,20 @@ internal sealed class TimeoutStrategy : Strategy
         try
         {
             timer = _timeProvider.CreateTimer(
-                static state => ((CancellationTokenSource)state!).Cancel(),
+                static state =>
+                {
+                    try
+                    {
+                        ((CancellationTokenSource)state!).Cancel();
+                    }
+                    catch
+                    {
+                        // Suppress exceptions from timer callback to prevent process termination.
+                        // CancellationTokenSource.Cancel() can throw if user cancellation callbacks throw.
+                        // We can't log here safely on a thread pool timer thread, but the timeout has
+                        // already been triggered via cancellation request, so suppressing is acceptable.
+                    }
+                },
                 linkedCts,
                 timeout,
                 System.Threading.Timeout.InfiniteTimeSpan);

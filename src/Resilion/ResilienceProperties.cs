@@ -31,13 +31,17 @@ public sealed class ResilienceProperties
     /// <typeparam name="TValue">The type of the value.</typeparam>
     /// <param name="key">The property key.</param>
     /// <param name="value">When this method returns <c>true</c>, contains the value.</param>
-    /// <returns><c>true</c> if the property was found; <c>false</c> otherwise.</returns>
+    /// <returns><c>true</c> if the property was found and is of the correct type; <c>false</c> otherwise.</returns>
     public bool TryGetValue<TValue>(ResiliencePropertyKey<TValue> key, out TValue? value)
     {
         if (_properties is not null && _properties.TryGetValue(key.Key, out var raw))
         {
-            value = (TValue?)raw;
-            return true;
+            // Type-safe cast: return false if the stored value is not of the expected type
+            if (raw is TValue typed)
+            {
+                value = typed;
+                return true;
+            }
         }
 
         value = default;
@@ -68,9 +72,6 @@ public sealed class ResilienceProperties
     /// </summary>
     public int Count => _properties?.Count ?? 0;
 
-    /// <summary>
-    /// Removes all properties.
-    /// </summary>
     /// <summary>
     /// Removes all properties.
     /// </summary>

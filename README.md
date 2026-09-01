@@ -359,7 +359,7 @@ Structured logging is also available through callbacks on strategy options.
 
 ## Supported .NET Versions
 
-- **.NET 9.0+**
+- **.NET 8.0+**
 
 Resilion is built for modern .NET with full support for:
 - Top-level statements

@@ -15,7 +15,7 @@ internal sealed class SlidingWindow
     private readonly Bucket[] _buckets;
     private readonly TimeSpan _bucketDuration;
     private readonly TimeProvider _timeProvider;
-    private readonly Lock _lock = new();
+    private readonly object _lock = new();
 
     private long _currentBucketStartTimestamp;
     private int _currentBucketIndex;

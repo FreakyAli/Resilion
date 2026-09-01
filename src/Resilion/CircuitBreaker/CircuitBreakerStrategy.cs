@@ -10,7 +10,7 @@ internal sealed class CircuitBreakerStrategy : Strategy
     private readonly CircuitBreakerStrategyOptions _options;
     private readonly TimeProvider _timeProvider;
     private readonly SlidingWindow _window;
-    private readonly Lock _lock = new();
+    private readonly object _lock = new();
 
     private volatile CircuitState _state = CircuitState.Closed;
     private long _openedAtTimestamp;
@@ -33,7 +33,7 @@ internal sealed class CircuitBreakerStrategy : Strategy
         Func<ResilienceContext, ValueTask<Outcome<TResult>>> callback,
         ResilienceContext context)
     {
-        var rejection = TryReject(context);
+        var rejection = await TryRejectAsync(context).ConfigureAwait(context.ContinueOnCapturedContext);
         if (rejection is not null)
         {
             return Outcome<TResult>.FromException(rejection);
@@ -42,12 +42,12 @@ internal sealed class CircuitBreakerStrategy : Strategy
         try
         {
             var outcome = await callback(context).ConfigureAwait(context.ContinueOnCapturedContext);
-            RecordOutcome(outcome.Exception, context);
+            await RecordOutcomeAsync(outcome.Exception, context).ConfigureAwait(context.ContinueOnCapturedContext);
             return outcome;
         }
         catch (Exception ex)
         {
-            RecordOutcome(ex, context);
+            await RecordOutcomeAsync(ex, context).ConfigureAwait(context.ContinueOnCapturedContext);
             throw;
         }
     }
@@ -138,6 +138,126 @@ internal sealed class CircuitBreakerStrategy : Strategy
     {
         var isFailure = exception is not null && _options.ShouldHandleException(exception);
         RecordAndTransition(isFailure, context);
+    }
+
+    private async ValueTask RecordOutcomeAsync(Exception? exception, ResilienceContext context)
+    {
+        var isFailure = exception is not null && _options.ShouldHandleException(exception);
+        await RecordAndTransitionAsync(isFailure, context).ConfigureAwait(false);
+    }
+
+    private CircuitBrokenException? TryRejectSync(ResilienceContext context)
+    {
+        return TryReject(context);
+    }
+
+    private async ValueTask<CircuitBrokenException?> TryRejectAsync(ResilienceContext context)
+    {
+        var rejection = TryReject(context);
+        if (rejection is not null)
+        {
+            return rejection;
+        }
+
+        // Event was fired synchronously in TryReject. No async work needed.
+        return null;
+    }
+
+    private async ValueTask RecordAndTransitionAsync(bool isFailure, ResilienceContext context)
+    {
+        var currentState = _state;
+
+        switch (currentState)
+        {
+            case CircuitState.Closed:
+                if (isFailure)
+                {
+                    _window.RecordFailure();
+                }
+                else
+                {
+                    _window.RecordSuccess();
+                }
+
+                var failureRatio = _window.GetFailureRatio(out var totalCount);
+                if (failureRatio >= _options.FailureRatioThreshold
+                    && totalCount >= _options.MinimumThroughput)
+                {
+                    CircuitStateChangedEvent? pendingEvent = null;
+                    lock (_lock)
+                    {
+                        if (_state == CircuitState.Closed)
+                        {
+                            pendingEvent = Trip(context);
+                        }
+                    }
+
+                    await FireEventAsync(pendingEvent).ConfigureAwait(false);
+                }
+
+                break;
+
+            case CircuitState.HalfOpen:
+                CircuitStateChangedEvent? halfOpenEvent = null;
+                lock (_lock)
+                {
+                    if (_state != CircuitState.HalfOpen)
+                    {
+                        return;
+                    }
+
+                    if (isFailure)
+                    {
+                        halfOpenEvent = Trip(context);
+                    }
+                    else
+                    {
+                        _window.Reset();
+                        halfOpenEvent = TransitionTo(CircuitState.Closed, context);
+                    }
+                }
+
+                await FireEventAsync(halfOpenEvent).ConfigureAwait(false);
+                break;
+        }
+    }
+
+    private async ValueTask FireEventAsync(CircuitStateChangedEvent? evt)
+    {
+        if (evt is null)
+        {
+            return;
+        }
+
+        ResilionTelemetry.CircuitBreakerStateChanges.Add(1);
+
+        var e = evt.Value;
+        switch (e.CurrentState)
+        {
+            case CircuitState.Open:
+                if (_options.OnOpened is { } onOpened && onOpened.HasHandler)
+                {
+                    await onOpened.InvokeAsync(e).ConfigureAwait(false);
+                }
+
+                break;
+
+            case CircuitState.Closed:
+                if (_options.OnClosed is { } onClosed && onClosed.HasHandler)
+                {
+                    await onClosed.InvokeAsync(e).ConfigureAwait(false);
+                }
+
+                break;
+
+            case CircuitState.HalfOpen:
+                if (_options.OnHalfOpened is { } onHalfOpened && onHalfOpened.HasHandler)
+                {
+                    await onHalfOpened.InvokeAsync(e).ConfigureAwait(false);
+                }
+
+                break;
+        }
     }
 
     private void RecordAndTransition(bool isFailure, ResilienceContext context)

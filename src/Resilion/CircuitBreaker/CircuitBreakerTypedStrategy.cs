@@ -10,7 +10,7 @@ internal sealed class CircuitBreakerTypedStrategy<TResult> : Strategy<TResult>
     private readonly CircuitBreakerStrategyOptions<TResult> _options;
     private readonly TimeProvider _timeProvider;
     private readonly SlidingWindow _window;
-    private readonly Lock _lock = new();
+    private readonly object _lock = new();
 
     private volatile CircuitState _state = CircuitState.Closed;
     private long _openedAtTimestamp;
@@ -43,14 +43,14 @@ internal sealed class CircuitBreakerTypedStrategy<TResult> : Strategy<TResult>
         {
             var outcome = await callback(context).ConfigureAwait(context.ContinueOnCapturedContext);
             var isFailure = _options.ShouldHandleOutcome(outcome);
-            RecordAndTransition(isFailure, context);
+            await RecordAndTransitionAsync(isFailure, context).ConfigureAwait(context.ContinueOnCapturedContext);
             return outcome;
         }
         catch (Exception ex)
         {
             var failureOutcome = Outcome<TResult>.FromException(ex);
             var isFailure = _options.ShouldHandleOutcome(failureOutcome);
-            RecordAndTransition(isFailure, context);
+            await RecordAndTransitionAsync(isFailure, context).ConfigureAwait(context.ContinueOnCapturedContext);
             throw;
         }
     }
@@ -195,6 +195,103 @@ internal sealed class CircuitBreakerTypedStrategy<TResult> : Strategy<TResult>
                 }
 
                 FireEvent(halfOpenEvent);
+                break;
+        }
+    }
+
+    private async ValueTask RecordAndTransitionAsync(bool isFailure, ResilienceContext context)
+    {
+        var currentState = _state;
+
+        switch (currentState)
+        {
+            case CircuitState.Closed:
+                if (isFailure)
+                {
+                    _window.RecordFailure();
+                }
+                else
+                {
+                    _window.RecordSuccess();
+                }
+
+                var failureRatio = _window.GetFailureRatio(out var totalCount);
+                if (failureRatio >= _options.FailureRatioThreshold
+                    && totalCount >= _options.MinimumThroughput)
+                {
+                    CircuitStateChangedEvent? pendingEvent = null;
+                    lock (_lock)
+                    {
+                        if (_state == CircuitState.Closed)
+                        {
+                            pendingEvent = Trip(context);
+                        }
+                    }
+
+                    await FireEventAsync(pendingEvent).ConfigureAwait(false);
+                }
+
+                break;
+
+            case CircuitState.HalfOpen:
+                CircuitStateChangedEvent? halfOpenEvent = null;
+                lock (_lock)
+                {
+                    if (_state != CircuitState.HalfOpen)
+                    {
+                        return;
+                    }
+
+                    if (isFailure)
+                    {
+                        halfOpenEvent = Trip(context);
+                    }
+                    else
+                    {
+                        _window.Reset();
+                        halfOpenEvent = TransitionTo(CircuitState.Closed, context);
+                    }
+                }
+
+                await FireEventAsync(halfOpenEvent).ConfigureAwait(false);
+                break;
+        }
+    }
+
+    private async ValueTask FireEventAsync(CircuitStateChangedEvent? evt)
+    {
+        if (evt is null)
+        {
+            return;
+        }
+
+        ResilionTelemetry.CircuitBreakerStateChanges.Add(1);
+
+        var e = evt.Value;
+        switch (e.CurrentState)
+        {
+            case CircuitState.Open:
+                if (_options.OnOpened is { } onOpened && onOpened.HasHandler)
+                {
+                    await onOpened.InvokeAsync(e).ConfigureAwait(false);
+                }
+
+                break;
+
+            case CircuitState.Closed:
+                if (_options.OnClosed is { } onClosed && onClosed.HasHandler)
+                {
+                    await onClosed.InvokeAsync(e).ConfigureAwait(false);
+                }
+
+                break;
+
+            case CircuitState.HalfOpen:
+                if (_options.OnHalfOpened is { } onHalfOpened && onHalfOpened.HasHandler)
+                {
+                    await onHalfOpened.InvokeAsync(e).ConfigureAwait(false);
+                }
+
                 break;
         }
     }

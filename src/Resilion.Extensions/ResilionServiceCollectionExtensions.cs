@@ -92,7 +92,10 @@ public static class ResilionServiceCollectionExtensions
     /// </summary>
     internal static ResiliencePipelineRegistry<string> BuildRegistry(IServiceProvider sp)
     {
-        var registry = sp.GetRequiredService<ResiliencePipelineRegistry<string>>();
+        // Create a new registry instance (don't call GetRequiredService to avoid infinite recursion)
+        var registry = new ResiliencePipelineRegistry<string>();
+
+        // Apply all registered pipeline configurations
         var configurators = sp.GetServices<IPipelineConfigurator>();
         foreach (var configurator in configurators)
         {
