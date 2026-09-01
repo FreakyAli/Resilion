@@ -269,6 +269,7 @@ ClientBin/
 *.pfx
 *.publishsettings
 orleans.codegen.cs
+.DS_Store
 
 # Including strong name files can present a security risk
 # (https://github.com/github/gitignore/pull/2483#issue-259490424)
@@ -427,3 +428,35 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# AI coding agents
+.claude/
+.cursor/
+.cursorignore
+.cursorindexingignore
+.cursorrules
+.codex/
+AGENTS.md
+.copilot/
+.windsurf/
+.windsurfrules
+.codeium/
+.cody/
+.continue/
+.aider*
+.aiderignore
+.cline/
+.clinerules
+.roo/
+.roorules
+.devin/
+.junie/
+.augment/
+.amazonq/
+.gemini/
+.tabnine/
+.tabby/
+.bolt/
+.v0/
+.idx/
+.sourcery/

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>Resilion.RateLimiting</PackageId>
+    <RootNamespace>Resilion.RateLimiting</RootNamespace>
+    <AssemblyName>Resilion.RateLimiting</AssemblyName>
+    <Description>Rate limiting strategy for Resilion wrapping System.Threading.RateLimiting.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Resilion\Resilion.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Threading.RateLimiting" Version="9.0.0" />
+  </ItemGroup>
+
+</Project>

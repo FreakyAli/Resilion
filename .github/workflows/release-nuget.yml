@@ -1,0 +1,68 @@
+name: Create a release on NuGet
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+      - "v*.*.*-pre"
+
+env:
+  DOTNET_VERSION: '9.0.x'
+
+jobs:
+  release-nuget:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Verify commit exists in origin/master
+        run: |
+          git fetch --no-tags --prune --depth=1 origin +refs/heads/*:refs/remotes/origin/*
+          git branch --remote --contains | grep -q "origin/master" || { echo "Tag is not on origin/master. Aborting release."; exit 1; }
+
+      - name: Get version information from tag
+        id: get_version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version_without_v=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Build
+        run: dotnet build -c Release -p:Version=${{ steps.get_version.outputs.version_without_v }}
+
+      - name: Test
+        run: dotnet test -c Release --no-build
+
+      - name: Pack NuGet packages
+        run: |
+          dotnet pack src/Resilion/Resilion.csproj -c Release --no-build -p:Version=${{ steps.get_version.outputs.version_without_v }}
+          dotnet pack src/Resilion.Extensions/Resilion.Extensions.csproj -c Release --no-build -p:Version=${{ steps.get_version.outputs.version_without_v }}
+          dotnet pack src/Resilion.RateLimiting/Resilion.RateLimiting.csproj -c Release --no-build -p:Version=${{ steps.get_version.outputs.version_without_v }}
+
+      - name: NuGet login (OIDC - trusted publishing)
+        id: login
+        uses: NuGet/login@v1
+        with:
+          user: FreakyAli
+
+      - name: Push NuGet packages
+        run: |
+          VERSION="${{ steps.get_version.outputs.version_without_v }}"
+          NUPKGS=$(find . -name "*.nupkg" -path "*${VERSION}*" ! -name "*.symbols.nupkg")
+          COUNT=$(echo "$NUPKGS" | wc -l)
+          if [ "$COUNT" -ne 3 ]; then
+            echo "Expected exactly 3 matching .nupkg files, found $COUNT. Aborting."
+            exit 1
+          fi
+          echo "$NUPKGS" | while read -r nupkg; do
+            echo "Pushing: $nupkg"
+            dotnet nuget push "$nupkg" -s https://api.nuget.org/v3/index.json -k ${{ steps.login.outputs.NUGET_API_KEY }}
+          done
