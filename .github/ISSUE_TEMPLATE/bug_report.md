@@ -24,13 +24,14 @@ A clear description of what the bug is.
 
 ```csharp
 var pipeline = Pipeline.Create(builder => builder
-    .AddRetry(new RetryOptions { MaxAttempts = 3 })
+    .AddRetry(new RetryStrategyOptions { MaxRetryAttempts = 3 })
     .AddTimeout(TimeSpan.FromSeconds(10)));
 
-await pipeline.ExecuteAsync(async ct =>
+await pipeline.ExecuteAsync(async (state, ct) =>
 {
     // Your operation here
-}, cancellationToken);
+    return null;
+}, (object?)null, CancellationToken.None);
 ```
 
 **Expected behavior**

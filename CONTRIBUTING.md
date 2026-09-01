@@ -10,7 +10,7 @@ Thank you for your interest in contributing to Resilion!
 
 ### Local Setup
 
-```bash
+```text
 git clone https://github.com/FreakyAli/Resilion.git
 cd Resilion
 dotnet restore
@@ -19,7 +19,7 @@ dotnet build
 
 ## Project Structure
 
-```
+```text
 src/
     Resilion/                   Core library (zero dependencies)
     Resilion.Extensions/        DI, logging, telemetry integration

@@ -1,6 +1,6 @@
 # Hedging
 
-Reduces tail latency by racing concurrent attempts. When the primary request is slow, a secondary fires. Whichever completes first wins.
+Reduces tail latency by racing concurrent attempts. When the primary request is slow, a secondary fires. Unhandled outcomes (success) complete the operation immediately. Handled outcomes (failures) trigger further attempts, and if all are handled, the last handled outcome is returned.
 
 ## Basic usage
 

@@ -10,8 +10,10 @@
     <IsTestProject>true</IsTestProject>
     <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
     <!-- xUnit1051: CancellationToken usage — not relevant for resilience library tests
-         where we deliberately control cancellation tokens -->
-    <NoWarn>$(NoWarn);xUnit1051</NoWarn>
+         where we deliberately control cancellation tokens
+         CS0162: Unreachable code — expected after assertions that always throw
+         CS0219: Variable assigned but never used — test helper variables -->
+    <NoWarn>$(NoWarn);xUnit1051;CS0162;CS0219</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

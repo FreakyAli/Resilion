@@ -46,7 +46,7 @@ listener.Start();
 
 ## Zero-cost when unused
 
-`Counter<long>.Add(1)` is a no-op at the runtime level when no `MeterListener` is subscribed. No allocation, no work. Metrics only become active when something listens.
+After initialization, `Counter<long>.Add(1)` is a no-op at the runtime level when no `MeterListener` is subscribed. No allocation, no work during the metric recording path. Note: `ResilionTelemetry` eagerly allocates the `Meter`, `ActivitySource`, and measurement instruments at startup. Metrics only become active when something listens.
 
 ## Strategy callbacks vs metrics
 

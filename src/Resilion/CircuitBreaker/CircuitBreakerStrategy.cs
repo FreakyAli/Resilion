@@ -39,11 +39,17 @@ internal sealed class CircuitBreakerStrategy : Strategy
             return Outcome<TResult>.FromException(rejection);
         }
 
-        var outcome = await callback(context).ConfigureAwait(context.ContinueOnCapturedContext);
-
-        RecordOutcome(outcome.Exception, context);
-
-        return outcome;
+        try
+        {
+            var outcome = await callback(context).ConfigureAwait(context.ContinueOnCapturedContext);
+            RecordOutcome(outcome.Exception, context);
+            return outcome;
+        }
+        catch (Exception ex)
+        {
+            RecordOutcome(ex, context);
+            throw;
+        }
     }
 
     protected internal override Outcome<TResult> Execute<TResult>(
@@ -56,11 +62,17 @@ internal sealed class CircuitBreakerStrategy : Strategy
             return Outcome<TResult>.FromException(rejection);
         }
 
-        var outcome = callback(context);
-
-        RecordOutcome(outcome.Exception, context);
-
-        return outcome;
+        try
+        {
+            var outcome = callback(context);
+            RecordOutcome(outcome.Exception, context);
+            return outcome;
+        }
+        catch (Exception ex)
+        {
+            RecordOutcome(ex, context);
+            throw;
+        }
     }
 
     private CircuitBrokenException? TryReject(ResilienceContext context)

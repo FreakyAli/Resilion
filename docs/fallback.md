@@ -75,8 +75,13 @@ Fallback requires `Pipeline<TResult>` because it must produce a substitute value
 When fallback activates, the original exception is swallowed. The fallback result is returned as if the operation succeeded. If you need to log the original error, use `OnFallback`:
 
 ```csharp
-Action<OnFallbackEvent<string>> onFallback = e =>
-    logger.LogWarning(e.Outcome.Exception, "Fallback activated, returning {Result}", e.FallbackResult);
+var pipeline = Pipeline.Create<string>(b => b.AddFallback(
+    new FallbackStrategyOptions<string>
+    {
+        FallbackAction = "cached-value",
+        OnFallback = e =>
+            logger.LogWarning(e.Outcome.Exception, "Fallback activated, returning {Result}", e.FallbackResult),
+    }));
 ```
 
 ## Fallback factory that throws

@@ -17,7 +17,7 @@ public static class ResilionServiceCollectionExtensions
     public static IServiceCollection AddResilion(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
-        services.TryAddSingleton<ResiliencePipelineRegistry<string>>();
+        services.TryAddSingleton<ResiliencePipelineRegistry<string>>(sp => BuildRegistry(sp));
         services.TryAddSingleton(ResilienceContextPool.Shared);
         return services;
     }
@@ -33,7 +33,7 @@ public static class ResilionServiceCollectionExtensions
     /// <example>
     /// <code>
     /// services.AddResiliencePipeline("my-pipeline", builder =&gt; builder
-    ///     .AddRetry(new RetryOptions { MaxRetryAttempts = 3 })
+    ///     .AddRetry(new RetryStrategyOptions { MaxRetryAttempts = 3 })
     ///     .AddTimeout(TimeSpan.FromSeconds(10)));
     ///
     /// // Resolve later:

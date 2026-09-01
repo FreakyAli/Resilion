@@ -40,7 +40,7 @@ catch (CircuitBrokenException ex)
 
 ## State machine
 
-```
+```text
      ┌─────────┐  failure ratio exceeded   ┌──────┐
      │ Closed  │ ────────────────────────▸  │ Open │
      │ (normal)│                            │(reject)

@@ -33,19 +33,28 @@ jobs:
         id: get_version
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
+          # Validate SemVer format (basic check for X.Y.Z or X.Y.Z-prerelease)
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+)?$ ]]; then
+            echo "Invalid version format: $VERSION"
+            exit 1
+          fi
           echo "version_without_v=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Build
-        run: dotnet build -c Release -p:Version=${{ steps.get_version.outputs.version_without_v }}
+        env:
+          VERSION: ${{ steps.get_version.outputs.version_without_v }}
+        run: dotnet build -c Release -p:Version="${VERSION}"
 
       - name: Test
         run: dotnet test -c Release --no-build
 
       - name: Pack NuGet packages
+        env:
+          VERSION: ${{ steps.get_version.outputs.version_without_v }}
         run: |
-          dotnet pack src/Resilion/Resilion.csproj -c Release --no-build -p:Version=${{ steps.get_version.outputs.version_without_v }}
-          dotnet pack src/Resilion.Extensions/Resilion.Extensions.csproj -c Release --no-build -p:Version=${{ steps.get_version.outputs.version_without_v }}
-          dotnet pack src/Resilion.RateLimiting/Resilion.RateLimiting.csproj -c Release --no-build -p:Version=${{ steps.get_version.outputs.version_without_v }}
+          dotnet pack src/Resilion/Resilion.csproj -c Release --no-build -p:Version="${VERSION}"
+          dotnet pack src/Resilion.Extensions/Resilion.Extensions.csproj -c Release --no-build -p:Version="${VERSION}"
+          dotnet pack src/Resilion.RateLimiting/Resilion.RateLimiting.csproj -c Release --no-build -p:Version="${VERSION}"
 
       - name: NuGet login (OIDC - trusted publishing)
         id: login

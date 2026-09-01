@@ -39,12 +39,20 @@ internal sealed class CircuitBreakerTypedStrategy<TResult> : Strategy<TResult>
             return Outcome<TResult>.FromException(rejection);
         }
 
-        var outcome = await callback(context).ConfigureAwait(context.ContinueOnCapturedContext);
-
-        var isFailure = _options.ShouldHandleOutcome(outcome);
-        RecordAndTransition(isFailure, context);
-
-        return outcome;
+        try
+        {
+            var outcome = await callback(context).ConfigureAwait(context.ContinueOnCapturedContext);
+            var isFailure = _options.ShouldHandleOutcome(outcome);
+            RecordAndTransition(isFailure, context);
+            return outcome;
+        }
+        catch (Exception ex)
+        {
+            var failureOutcome = Outcome<TResult>.FromException(ex);
+            var isFailure = _options.ShouldHandleOutcome(failureOutcome);
+            RecordAndTransition(isFailure, context);
+            throw;
+        }
     }
 
     protected internal override Outcome<TResult> Execute(
@@ -57,12 +65,20 @@ internal sealed class CircuitBreakerTypedStrategy<TResult> : Strategy<TResult>
             return Outcome<TResult>.FromException(rejection);
         }
 
-        var outcome = callback(context);
-
-        var isFailure = _options.ShouldHandleOutcome(outcome);
-        RecordAndTransition(isFailure, context);
-
-        return outcome;
+        try
+        {
+            var outcome = callback(context);
+            var isFailure = _options.ShouldHandleOutcome(outcome);
+            RecordAndTransition(isFailure, context);
+            return outcome;
+        }
+        catch (Exception ex)
+        {
+            var failureOutcome = Outcome<TResult>.FromException(ex);
+            var isFailure = _options.ShouldHandleOutcome(failureOutcome);
+            RecordAndTransition(isFailure, context);
+            throw;
+        }
     }
 
     private CircuitBrokenException? TryReject(ResilienceContext context)

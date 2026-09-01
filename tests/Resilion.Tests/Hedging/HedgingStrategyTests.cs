@@ -319,34 +319,40 @@ public class HedgingStrategyTests
 
         try
         {
-            var callCount = 0;
+            var state = new HedgingPropertyTestState { CallCount = 0, OriginalContext = context, PropertyKey = propertyKey, CapturedValue = null };
             var outcome = await pipeline.ExecuteOutcomeAsync(
                 static (state, ctx) =>
                 {
-                    var attempt = Interlocked.Increment(ref state.callCount);
+                    var attempt = Interlocked.Increment(ref state.CallCount);
                     if (attempt == 1)
                     {
                         return new ValueTask<Outcome<string>>(
                             Outcome<string>.FromException(new InvalidOperationException("fail")));
                     }
 
-                    // Second attempt — check if properties were propagated.
-                    state.ctx.Properties.TryGetValue(state.key, out var val);
-                    state.captured = val;
+                    // Second attempt — check if properties were propagated from the current attempt's context.
+                    ctx.Properties.TryGetValue(state.PropertyKey, out var val);
+                    state.CapturedValue = val;
                     return new ValueTask<Outcome<string>>(Outcome<string>.FromResult("ok"));
                 },
-                (callCount: 0, ctx: context, key: propertyKey, captured: (string?)null),
+                state,
                 context);
 
             // The captured value should reflect what was set on the original context.
-            // Note: the hedging strategy creates a new context per attempt and copies properties.
-            // With ExecuteOutcomeAsync the user-provided context IS the original context,
-            // so the first attempt sees it directly. For the second (hedged) attempt,
-            // properties are copied.
+            // The hedging strategy creates a per-attempt context copy with properties copied from original.
+            Assert.Equal("propagated-value", state.CapturedValue);
         }
         finally
         {
             ResilienceContextPool.Shared.Return(context);
         }
+    }
+
+    private class HedgingPropertyTestState
+    {
+        public int CallCount;
+        public ResilienceContext OriginalContext = null!;
+        public ResiliencePropertyKey<string> PropertyKey;
+        public string? CapturedValue;
     }
 }

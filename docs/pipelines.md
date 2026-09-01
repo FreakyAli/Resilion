@@ -68,7 +68,7 @@ var combined = Pipeline.Create(b => b
     .AddPipeline(retryPolicy));    // Retry innermost
 ```
 
-`AddPipeline` flattens the source pipeline's strategies into the current builder. No nesting — the composed pipeline behaves identically to one built inline.
+`AddPipeline` stores the source pipeline as a delegated component using delegated composition. It records `StrategyType.Custom` rather than flattening inner strategies. The inner strategies remain encapsulated and are not individually visible to ordering validators or strategy introspection.
 
 ## Empty pipelines
 

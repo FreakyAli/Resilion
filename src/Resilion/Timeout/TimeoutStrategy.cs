@@ -40,16 +40,24 @@ internal sealed class TimeoutStrategy : Strategy
 
             context.CancellationToken = linkedCts.Token;
 
-            var outcome = await callback(context).ConfigureAwait(context.ContinueOnCapturedContext);
+            try
+            {
+                var outcome = await callback(context).ConfigureAwait(context.ContinueOnCapturedContext);
 
-            if (outcome.Exception is OperationCanceledException oce
-                && WasCancelledByTimeout(linkedCts, previousToken))
+                if (outcome.Exception is OperationCanceledException oce
+                    && WasCancelledByTimeout(linkedCts, previousToken))
+                {
+                    var elapsed = _timeProvider.GetElapsedTime(startTimestamp);
+                    return await HandleTimeout<TResult>(context, timeout, elapsed, oce).ConfigureAwait(false);
+                }
+
+                return outcome;
+            }
+            catch (OperationCanceledException oce) when (WasCancelledByTimeout(linkedCts, previousToken))
             {
                 var elapsed = _timeProvider.GetElapsedTime(startTimestamp);
                 return await HandleTimeout<TResult>(context, timeout, elapsed, oce).ConfigureAwait(false);
             }
-
-            return outcome;
         }
         finally
         {

@@ -10,8 +10,8 @@ namespace Resilion.Extensions;
 public sealed class ResiliencePipelineRegistry<TKey> : IDisposable
     where TKey : notnull
 {
-    private readonly ConcurrentDictionary<TKey, Pipeline> _pipelines = new();
-    private readonly ConcurrentDictionary<(TKey, Type), object> _typedPipelines = new();
+    private readonly ConcurrentDictionary<TKey, Lazy<Pipeline>> _pipelines = new();
+    private readonly ConcurrentDictionary<(TKey, Type), Lazy<object>> _typedPipelines = new();
     private readonly ConcurrentDictionary<TKey, Func<PipelineBuilder, PipelineBuilder>> _factories = new();
     private readonly ConcurrentDictionary<(TKey, Type), object> _typedFactories = new();
 
@@ -56,17 +56,22 @@ public sealed class ResiliencePipelineRegistry<TKey> : IDisposable
     /// <exception cref="KeyNotFoundException">No pipeline is registered with the specified key.</exception>
     public Pipeline GetPipeline(TKey key)
     {
-        return _pipelines.GetOrAdd(key, static (k, factories) =>
+        var lazy = _pipelines.GetOrAdd(key, static (k, factories) =>
         {
-            if (!factories.TryGetValue(k, out var factory))
+            return new Lazy<Pipeline>(() =>
             {
-                throw new KeyNotFoundException($"No pipeline registered with key '{k}'.");
-            }
+                if (!factories.TryGetValue(k, out var factory))
+                {
+                    throw new KeyNotFoundException($"No pipeline registered with key '{k}'.");
+                }
 
-            var builder = new PipelineBuilder();
-            factory(builder);
-            return builder.Build();
+                var builder = new PipelineBuilder();
+                factory(builder);
+                return builder.Build();
+            });
         }, _factories);
+
+        return lazy.Value;
     }
 
     /// <summary>
@@ -78,21 +83,24 @@ public sealed class ResiliencePipelineRegistry<TKey> : IDisposable
     public Pipeline<TResult> GetPipeline<TResult>(TKey key)
     {
         var compositeKey = (key, typeof(TResult));
-        var pipeline = _typedPipelines.GetOrAdd(compositeKey, static (k, state) =>
+        var lazy = _typedPipelines.GetOrAdd(compositeKey, static (k, state) =>
         {
-            if (!state.TryGetValue(k, out var factory))
+            return new Lazy<object>(() =>
             {
-                throw new KeyNotFoundException(
-                    $"No pipeline registered with key '{k.Item1}' and result type '{k.Item2.Name}'.");
-            }
+                if (!state.TryGetValue(k, out var factory))
+                {
+                    throw new KeyNotFoundException(
+                        $"No pipeline registered with key '{k.Item1}' and result type '{k.Item2.Name}'.");
+                }
 
-            var configure = (Action<PipelineBuilder<TResult>>)factory;
-            var builder = new PipelineBuilder<TResult>();
-            configure(builder);
-            return builder.Build();
+                var configure = (Action<PipelineBuilder<TResult>>)factory;
+                var builder = new PipelineBuilder<TResult>();
+                configure(builder);
+                return (object)builder.Build();
+            });
         }, _typedFactories);
 
-        return (Pipeline<TResult>)pipeline;
+        return (Pipeline<TResult>)lazy.Value;
     }
 
     /// <summary>
@@ -116,14 +124,17 @@ public sealed class ResiliencePipelineRegistry<TKey> : IDisposable
     /// <inheritdoc />
     public void Dispose()
     {
-        foreach (var pipeline in _pipelines.Values)
+        foreach (var lazy in _pipelines.Values)
         {
-            pipeline.Dispose();
+            if (lazy.IsValueCreated)
+            {
+                lazy.Value.Dispose();
+            }
         }
 
-        foreach (var pipeline in _typedPipelines.Values)
+        foreach (var lazy in _typedPipelines.Values)
         {
-            if (pipeline is IDisposable disposable)
+            if (lazy.IsValueCreated && lazy.Value is IDisposable disposable)
             {
                 disposable.Dispose();
             }

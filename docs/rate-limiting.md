@@ -73,17 +73,19 @@ The strategy does NOT own the `RateLimiter`. You (or your DI container) are resp
 
 ## RetryAfter
 
-When the rate limiter provides `RetryAfter` metadata (e.g., `TokenBucketRateLimiter`), it's included in `RateLimitRejectedException.RetryAfter`. Combine with Retry to automatically wait:
+When the rate limiter provides `RetryAfter` metadata (e.g., `TokenBucketRateLimiter`), it's included in `RateLimitRejectedException.RetryAfter`. Combine with Retry with a fixed delay strategy:
 
 ```csharp
 var pipeline = Pipeline.Create(b => b
     .AddRetry(new RetryStrategyOptions
     {
         ShouldHandle = ex => ex is RateLimitRejectedException,
-        Delay = RetryDelay.Custom(ctx => TimeSpan.FromSeconds(1)), // or use RetryAfter
+        Delay = RetryDelay.Custom(ctx => TimeSpan.FromSeconds(1)), // Fixed one-second retry delay
     })
     .AddRateLimiter(new RateLimiterStrategyOptions { RateLimiter = limiter }));
 ```
+
+Note: The retry delay is fixed at 1 second in this example. To use `RateLimitRejectedException.RetryAfter` dynamically, implement custom retry logic or extend the retry strategy.
 
 ## Sync execution
 

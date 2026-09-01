@@ -69,7 +69,7 @@ public abstract class Strategy<TResult>
 
 At `Build()` time, strategies are compiled into a linked chain of internal `PipelineComponent` objects. No allocation per call for the chain structure itself.
 
-```
+```text
 Pipeline.ExecuteAsync(userAction, cancellationToken)
   │
   ▼
@@ -92,7 +92,7 @@ Return ResilienceContext to pool
 
 First added = outermost. Canonical order:
 
-```
+```text
 RateLimiter → TotalTimeout → Retry → CircuitBreaker → AttemptTimeout → UserCode
 ```
 

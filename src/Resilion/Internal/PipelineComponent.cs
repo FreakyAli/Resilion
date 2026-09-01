@@ -75,7 +75,11 @@ internal sealed class StrategyComponent : PipelineComponent
             context);
     }
 
-    public override void Dispose() => _strategy.Dispose();
+    public override void Dispose()
+    {
+        _strategy.Dispose();
+        _next.Dispose();
+    }
 }
 
 /// <summary>
@@ -155,5 +159,9 @@ internal sealed class TypedStrategyComponent<TStrategyResult> : PipelineComponen
             Outcome<TResult>>(ref result);
     }
 
-    public override void Dispose() => _strategy.Dispose();
+    public override void Dispose()
+    {
+        _strategy.Dispose();
+        _next.Dispose();
+    }
 }

@@ -25,6 +25,8 @@ var pipeline = Pipeline.Create(b => b
     })
     .AddTimeout(TimeSpan.FromSeconds(5)));
 
+var httpClient = new HttpClient();
+
 var result = await pipeline.ExecuteAsync(
     static (client, ct) => client.GetStringAsync("https://api.example.com/data", ct),
     httpClient);
@@ -166,7 +168,7 @@ var pipeline = registry.GetPipeline("my-pipeline");
 
 ## Project Structure
 
-```
+```text
 src/
     Resilion/                   Core library (zero dependencies)
     Resilion.Extensions/        DI, logging, telemetry integration

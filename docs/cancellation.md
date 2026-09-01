@@ -10,7 +10,7 @@ This is the single most important cancellation guarantee.
 
 ## Token flow
 
-```
+```text
 User provides CancellationToken
   │
   Pipeline sets context.CancellationToken = userToken

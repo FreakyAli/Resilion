@@ -30,6 +30,7 @@ Features, improvements, and known tradeoffs under consideration for future versi
 | 19 | **Hedging sync path shares context across attempts** | **P1** | Fix | Medium | Low | Sync `Execute` reuses same ResilienceContext for all sequential attempts — inner strategies see stale Properties |
 | 20 | Hedging `ResolveAction` missing `Task.Run` wrapper | P1 | Fix | Medium | Low | Sync path deadlock risk when ActionGenerator returns async action |
 | 21 | Registry `GetOrAdd` race leaks undisposed Pipelines | P1 | Fix | Medium | Low | Concurrent first-access creates N pipelines, discards N-1 without Dispose |
+| 22 | Hedging latency-mode: Double WhenAny + stale task | P2 | Fix | Medium | Medium | Completed task stays in list, second WhenAny may return wrong task, wastes cycles |
 | 34 | **Hedging latency-mode: completed task bypasses delay for all subsequent attempts** | **P1** | Fix | High | Medium | Failed task stays in attempts list, `Task.WhenAny` resolves immediately on every subsequent iteration, all hedges launch in burst instead of staggered |
 | 23 | Interlocked.Increment under lock in SlidingWindow | P2 | Fix | Low | Low | Wasted memory barrier — plain `++` under lock is correct and cheaper |
 | 24 | Double lock acquisition per CB Closed-state call | P2 | Fix | Medium | Low | RecordSuccess + GetFailureRatio each acquire SlidingWindow lock separately |

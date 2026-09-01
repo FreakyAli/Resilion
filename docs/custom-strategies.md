@@ -46,7 +46,7 @@ public sealed class LoggingStrategy : Strategy
 
     public LoggingStrategy(ILogger logger) => _logger = logger;
 
-    protected internal override async ValueTask<Outcome<TResult>> ExecuteAsync<TResult>(
+    protected override async ValueTask<Outcome<TResult>> ExecuteAsync<TResult>(
         Func<ResilienceContext, ValueTask<Outcome<TResult>>> callback,
         ResilienceContext context)
     {
@@ -62,7 +62,7 @@ public sealed class LoggingStrategy : Strategy
     }
 
     // Optional: override for true sync support
-    protected internal override Outcome<TResult> Execute<TResult>(
+    protected override Outcome<TResult> Execute<TResult>(
         Func<ResilienceContext, Outcome<TResult>> callback,
         ResilienceContext context)
     {
@@ -96,7 +96,7 @@ public sealed class CachingStrategy<T> : Strategy<T>
 
     public CachingStrategy(ICache<T> cache) => _cache = cache;
 
-    protected internal override async ValueTask<Outcome<T>> ExecuteAsync(
+    protected override async ValueTask<Outcome<T>> ExecuteAsync(
         Func<ResilienceContext, ValueTask<Outcome<T>>> callback,
         ResilienceContext context)
     {

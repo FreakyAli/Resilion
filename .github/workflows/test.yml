@@ -1,11 +1,7 @@
 name: test
-run-name: '[Test] ${{ github.event.head_commit.message || github.event.pull_request.title || github.event.workflow_run.display_title || github.ref_name }}'
+run-name: '[Test] ${{ github.event.head_commit.message || github.event.pull_request.title || github.ref_name }}'
 
 on:
-  workflow_run:
-    workflows: ["CI"]
-    types:
-      - completed
   pull_request:
     branches:
       - "*"
@@ -25,14 +21,10 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
-    if: |
-      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') ||
-      (github.event_name != 'workflow_run')
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4

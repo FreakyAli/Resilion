@@ -20,13 +20,15 @@ This gives you retry, circuit breaker, timeout, fallback, and hedging — zero e
 |---------|----------------|
 | `Resilion` | Always — core library with all built-in strategies, zero dependencies |
 | `Resilion.RateLimiting` | When you need rate limiting (wraps `System.Threading.RateLimiting`) |
-| `Resilion.Extensions` | When you use DI (`IServiceCollection`) or want OpenTelemetry metrics |
+| `Resilion.Extensions` | When you use DI (`IServiceCollection`) for dependency injection |
+
+> **OpenTelemetry metrics**: The `ResilionTelemetry` meter is defined in the core `Resilion` package and can be consumed independently. The `Resilion.Extensions` package provides convenient integration with `IServiceCollection` for DI-based registration.
 
 ---
 
 ## Dependency graph
 
-```
+```text
 Resilion                          (zero dependencies)
   ↑
   ├── Resilion.Extensions         (+ Microsoft.Extensions.*)
