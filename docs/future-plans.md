@@ -21,46 +21,188 @@ Features, improvements, and known tradeoffs under consideration for future versi
 
 | # | Item | Priority | Type | Impact | Effort | Notes |
 |---|------|----------|------|--------|--------|-------|
-| 3 | Resilion.Extensions (DI + telemetry) | P1 | Feature | High | Medium | Microsoft.Extensions integration |
+| 15 | **DI configurators never applied to registry** | **P0** | Fix | Critical | Low | `AddResiliencePipeline` registers configurators but nothing applies them — users get KeyNotFoundException |
+| 16 | **CB FireEvent sync-only on async path** | **P0** | Fix | High | Low | Circuit breaker event handlers always call `.Invoke()` even from `ExecuteAsync` — deadlocks with async handlers under SynchronizationContext |
+| 17 | **ResilienceProperties TryGetValue throws on type mismatch** | **P0** | Fix | High | Low | Same string key + different type parameter causes `InvalidCastException` instead of returning false |
+| 32 | **Timeout async path missing catch for direct OCE** | **P0** | Fix | High | Low | Inner strategy throws OCE directly (not via Outcome), async path doesn't catch — timeout leaks as raw OCE |
+| 33 | **Timeout timer callback can crash process** | **P0** | Fix | Critical | Low | `CTS.Cancel()` in timer callback propagates `AggregateException` from user cancellation callbacks — unhandled on thread pool = process termination |
+| 18 | **ManualControl non-atomic initialization** | **P1** | Fix | Medium | Low | `_onReset` set after CAS on `_onIsolate` — race window where Isolate works but Reset throws |
+| 19 | **Hedging sync path shares context across attempts** | **P1** | Fix | Medium | Low | Sync `Execute` reuses same ResilienceContext for all sequential attempts — inner strategies see stale Properties |
+| 20 | Hedging `ResolveAction` missing `Task.Run` wrapper | P1 | Fix | Medium | Low | Sync path deadlock risk when ActionGenerator returns async action |
+| 21 | Registry `GetOrAdd` race leaks undisposed Pipelines | P1 | Fix | Medium | Low | Concurrent first-access creates N pipelines, discards N-1 without Dispose |
+| 34 | **Hedging latency-mode: completed task bypasses delay for all subsequent attempts** | **P1** | Fix | High | Medium | Failed task stays in attempts list, `Task.WhenAny` resolves immediately on every subsequent iteration, all hedges launch in burst instead of staggered |
+| 23 | Interlocked.Increment under lock in SlidingWindow | P2 | Fix | Low | Low | Wasted memory barrier — plain `++` under lock is correct and cheaper |
+| 24 | Double lock acquisition per CB Closed-state call | P2 | Fix | Medium | Low | RecordSuccess + GetFailureRatio each acquire SlidingWindow lock separately |
+| 25 | ConcurrentBag.Count in pool Return | P2 | Fix | Medium | Low | `Count` enumerates all thread-local lists — use Interlocked counter |
+| 26 | CB typed/non-generic strategy duplication (~200 lines) | P2 | Improvement | Medium | Medium | Extract shared state machine class |
+| 27 | Retry typed/non-generic strategy duplication (~100 lines) | P2 | Improvement | Medium | Medium | Extract shared retry loop |
+| 28 | PipelineBuilder typed/non-generic duplication (~80 lines) | P2 | Improvement | Medium | Medium | Extract shared base class |
+| 29 | ShouldHandleOutcome copy-pasted across 4 options classes | P2 | Improvement | Low | Low | Extract to shared static helper |
 | 4 | Per-call delegate allocation in pipeline chain | P2 | Fix | Medium | High | Middleware pattern inherent cost |
 | 5 | CancellationTokenSource pooling for Timeout/Hedging | P2 | Improvement | Medium | Medium | Reduce alloc on hot path |
-| 6 | Pipeline ordering validation | P2 | Feature | Medium | Medium | Warn on common misorderings |
-| 7 | Benchmarks vs Polly | P2 | Infrastructure | High | Medium | Prove performance claims |
-| 8 | README and docs | P2 | Documentation | High | Medium | User-facing documentation |
+| 11 | Hedging: Task.WhenAny memory leak | P2 | Fix | Medium | Medium | Continuations not deregistered on losing tasks |
 | 9 | WaitHandle allocation in sync retry | P3 | Fix | Low | Low | CancellationToken.WaitHandle lazy alloc |
 | 10 | Resilion.Testing package | P3 | Feature | Medium | Low | Test doubles, assertion helpers |
-| 11 | Hedging: Task.WhenAny memory leak | P2 | Fix | Medium | Medium | Continuations not deregistered on losing tasks |
 | 12 | Hedging: HedgingDelayGenerator | P3 | Feature | Low | Low | Dynamic delay per attempt |
-| 13 | Hedging: Properties propagation to attempt contexts | P2 | Fix | Medium | Low | User properties not copied to hedged attempts |
 | 14 | Hedging: HedgingRejectedException with aggregated errors | P3 | Improvement | Low | Low | Currently dead code — never thrown |
+| 30 | FallbackAction/ResilienceEventHandler Task.Run missing CancellationToken | P3 | Fix | Low | Low | Sync-over-async wrappers can't be interrupted by cancellation |
+| 31 | Duplicate XML doc on ResilienceProperties.Clear | P3 | Fix | Low | Low | Copy-paste leftover — orphaned summary block |
 
-> **Completed (removed from backlog):** Solution structure, .editorconfig, global.json, CI workflows, Outcome\<T\>, ResilienceContext pooling, Strategy base types, Pipeline/PipelineBuilder, ResilienceEventHandler union struct, Timeout strategy, Retry strategy (with RetryDelay discriminated union), Circuit Breaker (sliding window, state machine, thread safety), Fallback (with FallbackAction implicit conversions), code review and fixes for 13 issues, Rate Limiter strategy (wrapping System.Threading.RateLimiting), Hedging strategy (parallel/latency/sequential modes, per-attempt CTS, cleanup-on-cancel).
+> **Completed (removed from backlog):** Solution structure, .editorconfig, global.json, CI workflows, Outcome\<T\>, ResilienceContext pooling, Strategy base types, Pipeline/PipelineBuilder, ResilienceEventHandler union struct, Timeout strategy, Retry strategy (with RetryDelay discriminated union), Circuit Breaker (sliding window, state machine, thread safety), Fallback (with FallbackAction implicit conversions), code review and fixes for 13 issues, Rate Limiter strategy (wrapping System.Threading.RateLimiting), Hedging strategy (parallel/latency/sequential modes, per-attempt CTS, cleanup-on-cancel), Pipeline ordering validation, Telemetry wired into all strategies, Docs (15 files), README, Samples, Benchmarks vs Polly, #6 Pipeline ordering validation, #7 Benchmarks, #8 README and docs, #13 Hedging Properties propagation (CopyFrom added).
+
+---
+
+## P0 — Bugs (fix before any release)
+
+### 15. DI Configurators Never Applied to Registry
+
+**Type:** Fix — Critical correctness bug
+
+**Why**
+
+`AddResiliencePipeline("name", configure)` registers `IPipelineConfigurator` singletons in DI, but nothing ever applies them to the `ResiliencePipelineRegistry<string>`. The registry is registered via `TryAddSingleton` with its parameterless constructor, yielding an empty registry. `BuildRegistry` exists as `internal static` but is only called from test code.
+
+**Impact:** Any user following the DI pattern gets `KeyNotFoundException` at runtime. The entire DI registration surface is non-functional.
+
+**Fix:** Wire `BuildRegistry` into the DI container — either as a factory for the registry singleton, or via `IHostedService` / post-configuration. The simplest fix: replace `TryAddSingleton<ResiliencePipelineRegistry<string>>()` with a factory overload that resolves all `IPipelineConfigurator` instances and applies them.
+
+**Location:** [ResilionServiceCollectionExtensions.cs](../src/Resilion.Extensions/ResilionServiceCollectionExtensions.cs)
+
+---
+
+### 16. Circuit Breaker FireEvent Sync-Only on Async Path
+
+**Type:** Fix — Deadlock under SynchronizationContext
+
+**Why**
+
+`FireEvent` in both `CircuitBreakerStrategy` and `CircuitBreakerTypedStrategy` always calls `handler.Invoke(e)` (sync), even when invoked from `ExecuteAsync`. For async handlers, `Invoke` does `Task.Run(...).GetAwaiter().GetResult()`, blocking the thread. Every other strategy correctly uses `await handler.InvokeAsync(...)` on async paths.
+
+**Impact:** Circuit breaker with async event handler deadlocks under WPF/WinForms SynchronizationContext. Thread pool starvation under load even without SynchronizationContext.
+
+**Fix:** Split `FireEvent` into `FireEvent` (sync) and `FireEventAsync` (async). Call the async variant from `ExecuteAsync`, the sync variant from `Execute`.
+
+**Location:** [CircuitBreakerStrategy.cs](../src/Resilion/CircuitBreaker/CircuitBreakerStrategy.cs), [CircuitBreakerTypedStrategy.cs](../src/Resilion/CircuitBreaker/CircuitBreakerTypedStrategy.cs)
+
+---
+
+### 17. ResilienceProperties TryGetValue Throws on Type Mismatch
+
+**Type:** Fix — Correctness
+
+**Why**
+
+`TryGetValue<TValue>` performs an unchecked cast `(TValue?)raw` on the stored `object?`. The key is the string from `ResiliencePropertyKey<TValue>.Key`, not the type parameter. Two keys with the same string but different types (e.g., `ResiliencePropertyKey<int>("code")` and `ResiliencePropertyKey<string>("code")`) cause `InvalidCastException` instead of returning `false`.
+
+**Fix:** Wrap the cast in a type check: `if (raw is TValue typed) { value = typed; return true; }`.
+
+**Location:** [ResilienceProperties.cs](../src/Resilion/ResilienceProperties.cs) — `TryGetValue`
+
+---
+
+### 32. Timeout Async Path Missing Catch for Direct OCE
+
+**Type:** Fix — Correctness
+
+**Why**
+
+The async `ExecuteAsync` in `TimeoutStrategy` only checks `outcome.Exception is OperationCanceledException` (line ~45). But if the inner callback throws `OperationCanceledException` directly (not captured in an Outcome — e.g., `Task.Delay` throws when its token cancels during Retry delay), there is no `catch (OperationCanceledException)` block on the async path. The sync path has one (line ~105). The raw OCE propagates to the caller instead of being wrapped in `TimeoutRejectedException`.
+
+**Impact:** Users can't distinguish timeout from external cancellation when Timeout wraps Retry and the timeout fires during a retry delay.
+
+**Fix:** Add `catch (OperationCanceledException oce) when (WasCancelledByTimeout(linkedCts, previousToken))` to the async path's try block, matching the sync path.
+
+**Location:** [TimeoutStrategy.cs](../src/Resilion/Timeout/TimeoutStrategy.cs) — `ExecuteAsync`
+
+---
+
+### 33. Timeout Timer Callback Can Crash Process
+
+**Type:** Fix — Critical
+
+**Why**
+
+The timeout timer callback is `static state => ((CancellationTokenSource)state!).Cancel()`. `CancellationTokenSource.Cancel()` invokes all registered cancellation callbacks. If any callback throws, `Cancel()` wraps the exception in `AggregateException` and rethrows. Since this runs on a thread pool timer thread with no try-catch, the unhandled exception terminates the process in .NET 6+.
+
+**Impact:** A user strategy that registers a faulty cancellation callback (e.g., `token.Register(() => resource.Dispose())` where Dispose throws) crashes the entire application when a timeout fires.
+
+**Fix:** Wrap the timer callback: `static state => { try { ((CancellationTokenSource)state!).Cancel(); } catch { /* log or swallow */ } }`.
+
+**Location:** [TimeoutStrategy.cs](../src/Resilion/Timeout/TimeoutStrategy.cs) — `CreateTimer` callback, lines ~36 and ~86
 
 ---
 
 ## P1 — Do First
 
-### 3. Resilion.Extensions (DI + Telemetry)
+### 18. ManualControl Non-Atomic Initialization
 
-**Type:** Feature — Integration Package
+**Type:** Fix — Race condition
 
 **Why**
 
-Production services use `Microsoft.Extensions.DependencyInjection` and OpenTelemetry. Resilion needs first-class integration without forcing these dependencies on the core package.
+`CircuitBreakerManualControl.Initialize` uses `Interlocked.CompareExchange` on `_onIsolate`, then plain assignment on `_onReset`. Between the CAS and the assignment, a concurrent `IsolateAsync()` succeeds but `ResetAsync()` throws — leaving the circuit permanently isolated.
 
-**Design**
+**Fix:** Set both fields atomically. Options: use a lock, or pack both into a single `(Func<Task>, Func<Task>)` tuple and CAS that.
 
-The `Resilion.Extensions` project (already exists) will provide:
-- `IServiceCollection.AddResilion()` and `AddResiliencePipeline(name, configure)` extensions
-- `ResiliencePipelineProvider<TKey>` for resolving named/keyed pipelines
-- `Meter("Resilion")` and `ActivitySource("Resilion")` for OpenTelemetry-compatible metrics and tracing
-- `ILogger` integration for strategy events
+**Location:** [CircuitBreakerManualControl.cs](../src/Resilion/CircuitBreaker/CircuitBreakerManualControl.cs) — `Initialize`
 
-**Files to Modify/Create:**
-- `src/Resilion.Extensions/ResilionServiceCollectionExtensions.cs`
-- `src/Resilion.Extensions/PipelineRegistry.cs`
-- `src/Resilion.Extensions/Telemetry/ResilionMeter.cs`
-- `tests/Resilion.Extensions.Tests/` — DI registration, telemetry emission tests
+---
+
+### 19. Hedging Sync Path Shares Context Across Attempts
+
+**Type:** Fix — Correctness
+
+**Why**
+
+Sync `Execute` in `HedgingStrategy` passes the same `ResilienceContext` to all sequential attempts. Any inner strategy that writes to `context.Properties` during attempt N leaves stale state visible to attempt N+1. The async path correctly creates a fresh per-attempt context.
+
+**Fix:** Create a per-attempt context copy in the sync path, matching the async path's `ResilienceContextPool.Shared.Rent(ct)` + `Properties.CopyFrom()`.
+
+**Location:** [HedgingStrategy.cs](../src/Resilion/Hedging/HedgingStrategy.cs) — `Execute`, line ~119
+
+---
+
+### 20. Hedging ResolveAction Missing Task.Run Wrapper
+
+**Type:** Fix — Deadlock risk
+
+**Why**
+
+Sync `ResolveAction` wraps a custom `ActionGenerator`'s async result with `.GetAwaiter().GetResult()` directly, without `Task.Run`. Every other sync-over-async site in the codebase uses `Task.Run` to escape the SynchronizationContext.
+
+**Fix:** Match the pattern: `Task.Run(() => customAction(ctx.CancellationToken).AsTask()).GetAwaiter().GetResult()`.
+
+**Location:** [HedgingStrategy.cs](../src/Resilion/Hedging/HedgingStrategy.cs) — `ResolveAction`, line ~241
+
+---
+
+### 34. Hedging Latency-Mode: Completed Task Bypasses Delay for All Subsequent Attempts
+
+**Type:** Fix — Behavioral incorrectness
+
+**Why**
+
+In latency mode (`HedgingDelay > 0`), once an attempt completes with a handled failure, it stays in `attempts`. On the next loop iteration, `Task.WhenAny(attempts)` resolves immediately on the already-completed task, so the hedging delay is never honored. All remaining hedged attempts launch in a burst instead of being staggered by `HedgingDelay`.
+
+**Example:** `HedgingDelay = 2s`, `MaxHedgedAttempts = 4`. Primary fails in 100ms. Attempts 1, 2, 3 all launch within milliseconds instead of being spaced 2s apart.
+
+**Fix:** Remove completed tasks from `attempts` after checking their outcome in the latency-mode early-check block.
+
+**Location:** [HedgingStrategy.cs](../src/Resilion/Hedging/HedgingStrategy.cs) — `ExecuteAsync`, latency mode block
+
+---
+
+### 21. Registry GetOrAdd Race Leaks Undisposed Pipelines
+
+**Type:** Fix — Resource leak
+
+**Why**
+
+`ConcurrentDictionary.GetOrAdd` with a factory may execute the factory multiple times under concurrent access. Only one `Pipeline` is stored; the rest are discarded without `Dispose`. Custom strategies holding unmanaged resources would leak.
+
+**Fix:** Use `Lazy<Pipeline>` as the dictionary value, or use a lock per key to ensure single creation.
+
+**Location:** [ResiliencePipelineRegistry.cs](../src/Resilion.Extensions/ResiliencePipelineRegistry.cs) — `GetPipeline`
 
 ---
 
@@ -161,17 +303,77 @@ Implement a custom `FirstCompletedAsync` that uses `TaskCompletionSource` + per-
 
 ---
 
-### 13. Hedging: Properties Propagation to Attempt Contexts
+### 22. Hedging Latency-Mode Double WhenAny + Stale Task
 
-**Type:** Fix — Correctness
+**Type:** Fix — Correctness (minor)
 
 **Why**
 
-In `HedgingStrategy.ResolveAsyncAction`, when re-executing the original callback for hedged attempts, the code creates a new `ResilienceContext` and copies `OperationKey` and `ContinueOnCapturedContext` but does NOT copy `Properties`. If the user stored custom data in `context.Properties` before execution (or an outer strategy set properties), hedged attempts won't see it.
+In latency mode, when an attempt completes before the delay, `Task.WhenAny(attempts)` is called twice (once nested, once after). The second call may return a different task. Also, the completed/failed task stays in `attempts`, so `WaitForBestOutcome` re-evaluates it, wasting a cycle and potentially setting `lastFailure` to the wrong attempt.
 
-**Fix:** Copy all properties from the original context to the attempt context. Either iterate and copy, or add a `CopyFrom` method on `ResilienceProperties`.
+**Fix:** Store the result of the first `WhenAny`, remove completed tasks from the list before launching the next attempt.
 
-**Location:** [HedgingStrategy.cs](../src/Resilion/Hedging/HedgingStrategy.cs) — `ResolveAsyncAction`, line ~210
+**Location:** [HedgingStrategy.cs](../src/Resilion/Hedging/HedgingStrategy.cs) — `ExecuteAsync`, latency mode block
+
+---
+
+### 23. Interlocked.Increment Under Lock in SlidingWindow
+
+**Type:** Fix — Efficiency
+
+**Why**
+
+`RecordSuccess()` and `RecordFailure()` acquire `_lock` then use `Interlocked.Increment`. Since the lock is held, `Interlocked` adds a full memory barrier for zero benefit. Plain `++` is correct and cheaper.
+
+**Fix:** Replace `Interlocked.Increment(ref _buckets[_currentBucketIndex].Successes)` with `_buckets[_currentBucketIndex].Successes++`.
+
+**Location:** [SlidingWindow.cs](../src/Resilion/CircuitBreaker/SlidingWindow.cs) — `RecordSuccess`, `RecordFailure`
+
+---
+
+### 24. Double Lock Acquisition Per CB Closed-State Call
+
+**Type:** Fix — Efficiency
+
+**Why**
+
+In Circuit Breaker's Closed path, `RecordAndTransition` calls `_window.RecordFailure()` then `_window.GetFailureRatio()`. Each acquires `SlidingWindow._lock` independently. Both also run `AdvanceWindow()`. This doubles lock contention and duplicates window-advancement.
+
+**Fix:** Add `RecordAndGetRatio(bool isFailure, out int totalCount)` to SlidingWindow that does record + ratio under one lock acquisition.
+
+**Location:** [CircuitBreakerStrategy.cs](../src/Resilion/CircuitBreaker/CircuitBreakerStrategy.cs), [SlidingWindow.cs](../src/Resilion/CircuitBreaker/SlidingWindow.cs)
+
+---
+
+### 25. ConcurrentBag.Count in Pool Return
+
+**Type:** Fix — Efficiency
+
+**Why**
+
+`ResilienceContextPool.Return` checks `_pool.Count < MaxPoolSize` before adding. `ConcurrentBag.Count` is O(n), acquiring locks on all thread-local lists. With many threads, this serializes the return path.
+
+**Fix:** Track count with `Interlocked.Increment`/`Decrement` on an `int _count` field instead.
+
+**Location:** [ResilienceContextPool.cs](../src/Resilion/ResilienceContextPool.cs) — `Return`
+
+---
+
+### 26–29. Strategy/Builder/Options Duplication
+
+**Type:** Improvement — Maintainability
+
+**Why**
+
+Code review identified significant duplication between typed and non-generic variants:
+- **#26:** `CircuitBreakerStrategy` / `CircuitBreakerTypedStrategy<T>` — ~200 lines of identical state machine logic
+- **#27:** `RetryStrategy` / `RetryStrategy<T>` — ~100 lines of identical retry loop (4 copies: async+sync × typed+untyped)
+- **#28:** `PipelineBuilder` / `PipelineBuilder<T>` — ~80 lines of identical Build/EmitWarnings/properties
+- **#29:** `ShouldHandleOutcome` — identical method body across `FallbackStrategyOptions<T>`, `RetryStrategyOptions<T>`, `CircuitBreakerStrategyOptions<T>`, `HedgingStrategyOptions<T>`
+
+**Fix:** Extract shared base classes, helper classes, or static methods. For CB, a shared `CircuitBreakerStateMachine` class parameterized on a failure predicate. For Retry, a shared loop parameterized on `Func<Outcome<T>, bool>`. For Builder, a `PipelineBuilderBase`. For ShouldHandle, a static `OutcomePredicates.Default<T>()`.
+
+**Risk:** A bug fix applied to one copy but not the other causes silent behavioral divergence between typed and non-generic variants of the same strategy.
 
 ---
 
@@ -249,34 +451,30 @@ The first option changes behavior for users who `catch (InvalidOperationExceptio
 
 ---
 
-## Known Tradeoffs (Documented, Not Planned to Fix)
+### 30. FallbackAction/ResilienceEventHandler Task.Run Missing CancellationToken
 
-### Null implicit conversion creates "successful" null outcome
+**Type:** Fix — Minor correctness
 
-`Outcome<string> o = (string)null;` creates a success outcome with a null result. This is consistent with how `Task<string>` handles null — `Task.FromResult<string>(null)` is a valid completed task. For nullable reference types this is expected behavior. Users working with non-nullable value types cannot trigger this.
+**Why**
 
-**Location:** [Outcome.cs](../src/Resilion/Outcome.cs) — `implicit operator`
+Both `FallbackAction<T>.Execute` and `ResilienceEventHandler<T>.Invoke` call `Task.Run(() => ...).GetAwaiter().GetResult()` for sync-over-async without passing `CancellationToken` to `Task.Run`. The blocking call can't be interrupted by cancellation.
 
-### DelegatingComponent does not dispose composed pipeline resources
+**Impact:** Low. Only affects sync path with async handlers/factories, and the underlying async operation would need to observe its own token anyway.
 
-When pipelines are composed via `AddPipeline()`, the `DelegatingComponent` intentionally does not dispose the inner component. This is because the inner pipeline may be shared — the same pre-built `Pipeline` can be flattened into multiple builders. The caller owns the lifetime of composed pipelines and must dispose them separately.
+---
 
-**Location:** [PipelineBuilder.cs](../src/Resilion/PipelineBuilder.cs) — `DelegatingComponent.Dispose()`
+### 31. Duplicate XML Doc on ResilienceProperties.Clear
 
-### ResilienceContextPool cap is approximate
+**Type:** Fix — Trivial
 
-The pool size check (`_pool.Count < MaxPoolSize`) followed by `_pool.Add(context)` is a TOCTOU race — multiple threads can all pass the check and add, slightly exceeding the 256 cap. This is intentional. The cap is a heuristic to prevent unbounded memory growth, not a hard limit. Using `Interlocked` or a lock for exact enforcement would add contention on every pool return for no meaningful benefit.
+**Why**
 
-**Location:** [ResilienceContextPool.cs](../src/Resilion/ResilienceContextPool.cs) — `Return()`
+Two consecutive identical `<summary>Removes all properties.</summary>` blocks before `Clear()`. Copy-paste leftover.
 
-### Timeout cancellation classification has a narrow race window
+**Location:** [ResilienceProperties.cs](../src/Resilion/ResilienceProperties.cs)
 
-In `TimeoutStrategy.WasCancelledByTimeout`, there is a TOCTOU window between checking `userToken.IsCancellationRequested` and `linkedCts.IsCancellationRequested`. If the user token is cancelled in between, user cancellation may be misclassified as a timeout (producing `TimeoutRejectedException` instead of `OperationCanceledException`). The window is nanoseconds wide and requires exact concurrent timing to trigger. In practice this is not observable.
+---
 
-**Location:** [TimeoutStrategy.cs](../src/Resilion/Timeout/TimeoutStrategy.cs) — `WasCancelledByTimeout()`
+---
 
-### Hedging latency mode calls Task.WhenAny twice
-
-In latency mode, the hedging strategy checks if any attempt completed before the delay by nesting `Task.WhenAny(Task.WhenAny(attempts), delayTask)`. When an attempt completes early, it calls `Task.WhenAny(attempts)` a second time to get the completed task. If a *different* attempt completed between the two calls, the second `WhenAny` may return a different task. This is benign — either task's result is checked, and if it's a failure the hedge launches anyway. But it means the "early success" check is not guaranteed to evaluate the first-completed task's result.
-
-**Location:** [HedgingStrategy.cs](../src/Resilion/Hedging/HedgingStrategy.cs) — `ExecuteAsync`, lines ~52-65
+See also: [tradeoffs.md](tradeoffs.md) — accepted design imperfections with reasoning for why they won't be fixed.
