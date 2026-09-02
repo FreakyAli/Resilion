@@ -62,6 +62,10 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
                         {
                             return completed;
                         }
+
+                        // Task is a handled failure; remove it from the list so it doesn't
+                        // immediately win WhenAny on the next iteration, bypassing the delay.
+                        attempts.Remove(completedTask);
                     }
                 }
                 // Parallel mode (delay == 0): launch immediately, no waiting.

@@ -10,8 +10,10 @@ namespace Resilion;
 /// </remarks>
 public sealed class CircuitBreakerManualControl
 {
+    private readonly object _initLock = new();
     private Func<Task>? _onIsolate;
     private Func<Task>? _onReset;
+    private bool _initialized;
 
     /// <summary>
     /// Forces the circuit into the <see cref="CircuitState.Isolated"/> state.
@@ -52,13 +54,18 @@ public sealed class CircuitBreakerManualControl
 
     internal void Initialize(Func<Task> onIsolate, Func<Task> onReset)
     {
-        if (Interlocked.CompareExchange(ref _onIsolate, onIsolate, null) is not null)
+        lock (_initLock)
         {
-            throw new InvalidOperationException(
-                "This CircuitBreakerManualControl is already bound to a circuit breaker strategy. " +
-                "Create a separate instance for each circuit breaker.");
-        }
+            if (_initialized)
+            {
+                throw new InvalidOperationException(
+                    "This CircuitBreakerManualControl is already bound to a circuit breaker strategy. " +
+                    "Create a separate instance for each circuit breaker.");
+            }
 
-        _onReset = onReset;
+            _onIsolate = onIsolate;
+            _onReset = onReset;
+            _initialized = true;
+        }
     }
 }
