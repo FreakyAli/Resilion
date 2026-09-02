@@ -25,6 +25,9 @@ detail to serve as a starting point for implementation.
 | # | Item | Priority | Type | Impact | Effort | Notes |
 |---|------|----------|------|--------|--------|-------|
 | 39 | Resilion.Http — HttpClient integration | P1 | Feature | Critical | High | AddStandardResilienceHandler() for IHttpClientFactory. #1 missing feature for adoption |
+| 49 | Telemetry counters carry no dimensions/tags | P1 | Fix | Critical | Medium | Add pipeline.name, operation.key tags to all counter increments |
+| 50 | ActivitySource is declared but never used | P1 | Fix | Medium | Medium | Wrap strategy execution in StartActivity() or remove promise |
+| 51 | No public API surface tracking | P1 | Infrastructure | Critical | Low | PublicApiAnalyzers, PublicAPI.Shipped.txt, CI enforcement |
 | 4 | Per-call delegate allocation in pipeline chain | P2 | Fix | Medium | High | Middleware pattern inherent cost |
 | 5 | CancellationTokenSource pooling for Timeout/Hedging | P2 | Improvement | Medium | Medium | Reduce alloc on hot path |
 | 11 | Hedging: Task.WhenAny memory leak | P2 | Fix | Medium | Medium | Continuations not deregistered on losing tasks |
@@ -33,6 +36,7 @@ detail to serve as a starting point for implementation.
 | 41 | Pipeline dynamic reload via IOptionsMonitor | P2 | Feature | Medium | High | Auto-recreate pipeline when bound options change |
 | 42 | Keyed services support | P2 | Feature | Medium | Medium | [FromKeyedServices("key")] for direct DI injection (.NET 8+) |
 | 46 | Timeout cancellation TOCTOU race fix | P2 | Fix | Low | Low | Eliminate narrow race in WasCancelledByTimeout — moved from tradeoffs.md |
+| 52 | No SourceLink, symbol packages, or deterministic builds | P2 | Infrastructure | Medium | Low | PublishRepositoryUrl, IncludeSymbols, SymbolPackageFormat, ContinuousIntegrationBuild |
 | 9 | WaitHandle allocation in sync retry | P3 | Fix | Low | Low | CancellationToken.WaitHandle lazy alloc |
 | 10 | Resilion.Testing package | P3 | Feature | Medium | Low | Test doubles, assertion helpers |
 | 12 | Hedging: HedgingDelayGenerator | P3 | Feature | Low | Low | Dynamic delay per attempt |
@@ -42,6 +46,8 @@ detail to serve as a starting point for implementation.
 | 45 | Telemetry enrichment (MeteringEnricher, listeners) | P3 | Feature | Low | Medium | Custom tags, raw event listeners, severity control |
 | 47 | CI code coverage collection | P3 | Infrastructure | Low | Medium | Blocked — verified incompatibility, see item #47 below |
 | 48 | Benchmark CI on PRs | P3 | Infrastructure | Low | Low | Catch perf regressions automatically instead of only on manual runs |
+| 53 | No SECURITY.md | P3 | Documentation | Low | Low | Vulnerability disclosure policy for OSS infrastructure library |
+| 54 | Evaluate multi-targeting net9.0 for System.Threading.Lock | P3 | Improvement | Low | Medium | Benchmark vs object lock, conditional compile if faster |
 
 ---
 
@@ -65,6 +71,72 @@ New package `Resilion.Http` with:
 Implementation: `DelegatingHandler` wrapping the Resilion pipeline. References `Resilion.Extensions` and `Microsoft.Extensions.Http`.
 
 **Performance note:** HttpClient pipelines are a hot path in high-throughput services (potentially millions of calls/sec). The per-call delegate allocation in the pipeline chain (#4 below) is acceptable for general use but may start showing up in profiles once this package ships. Benchmark the standard resilience handler under load and revisit #4 if closure allocations become a measurable cost at that scale.
+
+---
+
+### 49. Telemetry Counters Carry No Dimensions/Tags
+
+**Type:** Fix — Correctness
+
+**Why**
+
+Every counter increment in the codebase fires with zero tags. In `RetryStrategy.cs`, `CircuitBreakerStateMachine.cs`, `TimeoutStrategy.cs`, `FallbackStrategy.cs`, `HedgingStrategy.cs`, and `RateLimiterStrategy.cs`, every call to `.Add(1)` on counters like `ResilionTelemetry.RetryAttempts`, `CircuitBreakerStateChanges`, `TimeoutExpirations`, `FallbackActivations`, `HedgingAttempts`, and `RateLimiterRejections` passes zero tags.
+
+In an application with two named pipelines both using Retry, the `resilion.retry.attempts` counter cannot distinguish which pipeline is retrying. The counter becomes nearly useless for observability in multi-pipeline scenarios.
+
+**Fix**
+
+Thread the following tags to every `.Add()` call:
+- `pipeline.name` — sourced from `PipelineBuilderBase.Name` (already available at build time, must be passed through `ResilienceContext` at execution time)
+- `operation.key` — sourced from `ResilienceContext.OperationKey` (already exists but is never read for telemetry)
+
+Grep confirms zero tag usage across all strategy files. This is a correctness gap in the telemetry contract, not a nice-to-have. Untagged counters in multi-instance deployments are close to useless for debugging and alerting.
+
+**Effort:** Medium. Requires threading pipeline name through context initialization and reading `OperationKey` at each counter site.
+
+---
+
+### 50. ActivitySource Is Declared But Never Used
+
+**Type:** Fix — Correctness
+
+**Why**
+
+`ResilionTelemetry.ActivitySource` is declared as `new ActivitySource("Resilion")` and its XML documentation explicitly instructs consumers to `.AddSource("Resilion")` for distributed tracing support. Grep across all of `src/` finds zero calls to `.StartActivity()` anywhere in the codebase.
+
+This is the same class of problem as the dead `StrategyExecutions` and `StrategyDuration` counters that were already removed from this file — an unverified telemetry promise is worse than no promise. The ActivitySource is technically "used" (publicly declared, referenced in XML docs) but never actually emits a span. Any consumer configuring their tracing stack to listen for "Resilion" will receive nothing.
+
+**Fix**
+
+Either:
+
+1. **Implement spans:** Wrap each strategy's `ExecuteAsync` and `Execute` entry point in a `StartActivity()` call, tagged with strategy name, pipeline name, and outcome (success/failure/cancelled). Wire the resulting `Activity` through to telemetry for correlation. This is the preferred path — spans are valuable for latency profiling and distributed tracing in high-scale systems.
+
+2. **Remove the ActivitySource:** Delete the declaration and the misleading XML docs if tracing is not a v1.0 priority. This is acceptable; the promise can be reinstated when the feature is actually implemented.
+
+The current state (declared but unused) is untenable — it signals a feature that doesn't work.
+
+**Effort:** Medium for implementation, trivial for removal.
+
+---
+
+### 51. No Public API Surface Tracking
+
+**Type:** Infrastructure — Correctness
+
+**Why**
+
+Nothing in this repository guards against accidental breaking changes after v1.0 ships. Confirmed via repo-wide grep: zero matches for "PublicAPI", "ApiCompat", or "PublicApiAnalyzers". No `Microsoft.CodeAnalysis.PublicApiAnalyzers` in dependencies. No `PublicAPI.Shipped.txt` / `PublicAPI.Unshipped.txt` files. No `Microsoft.DotNet.ApiCompat` CI check.
+
+Once the API is frozen at v1.0, there is no automated enforcement preventing a later PR from silently changing a public method signature, removing a member, or adding an unintended public API. This is standard practice in shipping libraries (Polly, NUnit, xunit all use PublicApiAnalyzers).
+
+**Fix**
+
+1. Add `Microsoft.CodeAnalysis.PublicApiAnalyzers` NuGet package to `src/Directory.Build.props`.
+2. After v1.0 ships, generate `PublicAPI.Shipped.txt` files for each public project per the tool's documentation.
+3. Add a CI check in `.github/workflows/` that fails any PR changing public surface without updating the corresponding `.Unshipped.txt` file.
+
+**Effort:** Low. The package is zero-configuration after initial setup. The CI check is a single MSBuild step.
 
 ---
 
@@ -204,6 +276,32 @@ Alternative (even tighter): register a `CancellationTokenRegistration` on the us
 
 ---
 
+### 52. No SourceLink, Symbol Packages, or Deterministic Builds
+
+**Type:** Infrastructure — Developer Experience
+
+**Why**
+
+Confirmed via grep of `src/Directory.Build.props`: zero instances of `PublishRepositoryUrl`, `EmbedUntrackedSources`, `IncludeSymbols`, `SymbolPackageFormat`, or `ContinuousIntegrationBuild` properties anywhere in the build configuration.
+
+Consumers of the Resilion NuGet packages cannot step into Resilion's source code while debugging — SourceLink metadata is missing. No `.snupkg` symbol package is published. This is low-effort but high-trust: Polly, most Microsoft.Extensions libraries, and serious .NET OSS projects enable this by default.
+
+**Fix**
+
+1. Add `Microsoft.SourceLink.GitHub` package reference to `src/Directory.Build.props`.
+2. Add the following properties to `src/Directory.Build.props` (or per-project as needed):
+   - `<PublishRepositoryUrl>true</PublishRepositoryUrl>`
+   - `<EmbedUntrackedSources>true</EmbedUntrackedSources>`
+   - `<IncludeSymbols>true</IncludeSymbols>`
+   - `<SymbolPackageFormat>snupkg</SymbolPackageFormat>`
+3. In the release CI job (`.github/workflows/`), set `<ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>` only during the release build (not in local dev builds — deterministic builds interact poorly with incremental local builds).
+
+**Impact:** Users can now debug into Resilion. Symbol packages enable IDE integration and offline symbol resolution.
+
+**Effort:** Low. These are standard MSBuild properties. No code changes required.
+
+---
+
 ## P3 — Backlog
 
 ### 9. WaitHandle Allocation in Sync Retry
@@ -331,6 +429,57 @@ Retry with a newer `Microsoft.Testing.Extensions.CodeCoverage` version once one 
 **Design**
 
 A GitHub Actions workflow that runs `dotnet run -c Release --project benchmarks/Resilion.Benchmarks -- --job short` on PRs touching `src/` or `benchmarks/`, and compares the result against a committed baseline (fail or comment on a regression past some threshold). Not critical for v1.0, but valuable for ongoing development once the library has enough usage that regressions would actually be noticed by users first.
+
+---
+
+### 53. No SECURITY.md
+
+**Type:** Documentation
+
+**Why**
+
+No vulnerability disclosure policy exists (confirmed: `SECURITY.md` not found in repo root). This is a standard, low-effort expectation for OSS infrastructure libraries — it tells users how to privately report security issues instead of disclosing them publicly on GitHub.
+
+**Fix**
+
+Add a `SECURITY.md` in the repository root documenting:
+- **Supported versions:** Which versions of Resilion receive security updates (typically N and N-1).
+- **Reporting:** Link to GitHub's private security advisory feature (Settings → Security & Analysis → Private vulnerability reporting). Include a brief note that security reports should be filed there instead of public issues.
+- **Response SLA:** Expected timeline for acknowledgement and patch release (e.g., "critical issues patched within 7 days").
+
+This is boilerplate text; most large OSS projects have near-identical policies. Low effort, high trust signal.
+
+**Effort:** Low. One short document.
+
+---
+
+### 54. Evaluate Multi-Targeting net9.0 for System.Threading.Lock
+
+**Type:** Improvement — Performance
+
+**Why**
+
+`src/Directory.Build.props` targets `net8.0` only (confirmed). .NET 9 introduced `System.Threading.Lock`, a purpose-built synchronization primitive faster than `lock(object)` under contention, especially in hot-path code with many concurrent waiters.
+
+`CircuitBreakerStateMachine` and `SlidingWindow` both hold a lock on every call while in the Closed state — the most common state in healthy systems. If benchmarks show `System.Threading.Lock` provides a measurable win in that scenario, multi-targeting is justified.
+
+**Fix**
+
+1. **Benchmark first:** Run the existing circuit-breaker-under-load benchmarks with both `lock(object)` and `System.Threading.Lock` implementations in isolation. Only proceed if the new lock type shows >5% wall-clock improvement under the standard load profile.
+
+2. **If justified:** Multi-target `net8.0;net9.0` in `src/Directory.Build.props`. Add conditional compilation in `CircuitBreakerStateMachine.cs` and `SlidingWindow.cs`:
+   ```csharp
+   #if NET9_0_OR_GREATER
+   private System.Threading.Lock _lock = new();
+   #else
+   private readonly object _lock = new();
+   #endif
+   ```
+   Both APIs are compatible with the same lock syntax; only the initialization changes.
+
+3. **Don't multi-target speculatively.** The cost is a more complex build matrix and CI test surface. Only add net9.0 if the benchmark proves it matters.
+
+**Effort:** Medium. Primarily benchmarking time. The conditional code change is trivial.
 
 ---
 
