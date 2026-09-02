@@ -152,7 +152,7 @@ public sealed class PipelineBuilder : PipelineBuilderBase
 
         if (_componentFactories.Count == 0)
         {
-            return Pipeline.Empty;
+            return Name is not null ? new Pipeline(PipelineComponent.Empty, name: Name) : Pipeline.Empty;
         }
 
         // Validate ordering unless suppressed.
@@ -276,7 +276,7 @@ public sealed class PipelineBuilder<TResult> : PipelineBuilderBase
 
         if (_componentFactories.Count == 0)
         {
-            return Pipeline<TResult>.Empty;
+            return Name is not null ? new Pipeline<TResult>(PipelineComponent.Empty, name: Name) : Pipeline<TResult>.Empty;
         }
 
         if (!SuppressOrderingWarnings && _strategyTypes.Count >= 2)

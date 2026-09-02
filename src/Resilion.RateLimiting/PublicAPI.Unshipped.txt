@@ -1,2 +1,23 @@
+#nullable enable
+
 # New public APIs for Resilion.RateLimiting (yet to ship).
 # Entries here should be moved to PublicAPI.Shipped.txt upon release.
+
+namespace Resilion.RateLimiting;
+
+OnRateLimitRejectedEvent
+OnRateLimitRejectedEvent.RetryAfter.get -> System.TimeSpan?
+OnRateLimitRejectedEvent.Context.get -> Resilion.ResilienceContext!
+
+RateLimitRejectedException
+RateLimitRejectedException.RetryAfter.get -> System.TimeSpan?
+
+RateLimiterExtensions
+RateLimiterExtensions.AddRateLimiter(Resilion.PipelineBuilder!, RateLimiterStrategyOptions!) -> Resilion.PipelineBuilder!
+RateLimiterExtensions.AddRateLimiter<TResult>(Resilion.PipelineBuilder<TResult>!, RateLimiterStrategyOptions!) -> Resilion.PipelineBuilder<TResult>!
+
+RateLimiterStrategyOptions
+RateLimiterStrategyOptions.RateLimiter.get -> System.Threading.RateLimiting.RateLimiter?
+RateLimiterStrategyOptions.RateLimiter.init -> void
+RateLimiterStrategyOptions.OnRejected.get -> Resilion.ResilienceEventHandler<OnRateLimitRejectedEvent>?
+RateLimiterStrategyOptions.OnRejected.init -> void

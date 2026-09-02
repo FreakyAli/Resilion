@@ -115,6 +115,7 @@ public sealed class Pipeline<TResult> : IDisposable, IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(action);
         ArgumentNullException.ThrowIfNull(context);
+        context.PipelineName = _name;
 
         return _component.ExecuteAsync(
             ctx => action(state, ctx),

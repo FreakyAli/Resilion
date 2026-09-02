@@ -337,6 +337,58 @@ public class PipelineTests
     }
 
     // ──────────────────────────────────────────────────────────────────
+    // Builder Name preservation
+    // ──────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void NonGenericBuilder_EmptyPipeline_PreservesName()
+    {
+        var pipeline = Pipeline.Create(b =>
+        {
+            b.Name = "my-pipeline";
+            // Add no strategies — should still preserve the name
+        });
+
+        Assert.Equal("my-pipeline", pipeline.Name);
+    }
+
+    [Fact]
+    public void GenericBuilder_EmptyPipeline_PreservesName()
+    {
+        var pipeline = Pipeline.Create<int>(b =>
+        {
+            b.Name = "typed-pipeline";
+            // Add no strategies — should still preserve the name
+        });
+
+        Assert.Equal("typed-pipeline", pipeline.Name);
+    }
+
+    [Fact]
+    public void NonGenericBuilder_NonEmptyPipeline_PreservesName()
+    {
+        var pipeline = Pipeline.Create(b =>
+        {
+            b.Name = "with-strategies";
+            b.AddStrategy(new NoOpStrategy());
+        });
+
+        Assert.Equal("with-strategies", pipeline.Name);
+    }
+
+    [Fact]
+    public void GenericBuilder_NonEmptyPipeline_PreservesName()
+    {
+        var pipeline = Pipeline.Create<int>(b =>
+        {
+            b.Name = "typed-with-strategies";
+            b.AddStrategy(new NoOpStrategy());
+        });
+
+        Assert.Equal("typed-with-strategies", pipeline.Name);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
     // Test helpers
     // ──────────────────────────────────────────────────────────────────
 
