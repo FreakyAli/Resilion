@@ -33,7 +33,7 @@ internal sealed class CircuitBreakerStrategy : Strategy
         Func<ResilienceContext, ValueTask<Outcome<TResult>>> callback,
         ResilienceContext context)
     {
-        var rejection = await TryRejectAsync(context).ConfigureAwait(context.ContinueOnCapturedContext);
+        var rejection = TryReject(context);
         if (rejection is not null)
         {
             return Outcome<TResult>.FromException(rejection);
@@ -146,24 +146,16 @@ internal sealed class CircuitBreakerStrategy : Strategy
         await RecordAndTransitionAsync(isFailure, context).ConfigureAwait(false);
     }
 
-    private CircuitBrokenException? TryRejectSync(ResilienceContext context)
-    {
-        return TryReject(context);
-    }
-
-    private async ValueTask<CircuitBrokenException?> TryRejectAsync(ResilienceContext context)
-    {
-        var rejection = TryReject(context);
-        if (rejection is not null)
-        {
-            return rejection;
-        }
-
-        // Event was fired synchronously in TryReject. No async work needed.
-        return null;
-    }
-
     private async ValueTask RecordAndTransitionAsync(bool isFailure, ResilienceContext context)
+    {
+        var pendingEvent = ComputeTransition(isFailure, context);
+        if (pendingEvent.HasValue)
+        {
+            await FireEventAsync(pendingEvent.Value).ConfigureAwait(false);
+        }
+    }
+
+    private CircuitStateChangedEvent? ComputeTransition(bool isFailure, ResilienceContext context)
     {
         var currentState = _state;
 
@@ -183,42 +175,36 @@ internal sealed class CircuitBreakerStrategy : Strategy
                 if (failureRatio >= _options.FailureRatioThreshold
                     && totalCount >= _options.MinimumThroughput)
                 {
-                    CircuitStateChangedEvent? pendingEvent = null;
                     lock (_lock)
                     {
                         if (_state == CircuitState.Closed)
                         {
-                            pendingEvent = Trip(context);
+                            return Trip(context);
                         }
                     }
-
-                    await FireEventAsync(pendingEvent).ConfigureAwait(false);
                 }
 
-                break;
+                return null;
 
             case CircuitState.HalfOpen:
-                CircuitStateChangedEvent? halfOpenEvent = null;
                 lock (_lock)
                 {
                     if (_state != CircuitState.HalfOpen)
                     {
-                        return;
+                        return null;
                     }
 
                     if (isFailure)
                     {
-                        halfOpenEvent = Trip(context);
+                        return Trip(context);
                     }
-                    else
-                    {
-                        _window.Reset();
-                        halfOpenEvent = TransitionTo(CircuitState.Closed, context);
-                    }
+
+                    _window.Reset();
+                    return TransitionTo(CircuitState.Closed, context);
                 }
 
-                await FireEventAsync(halfOpenEvent).ConfigureAwait(false);
-                break;
+            default:
+                return null;
         }
     }
 
@@ -262,60 +248,10 @@ internal sealed class CircuitBreakerStrategy : Strategy
 
     private void RecordAndTransition(bool isFailure, ResilienceContext context)
     {
-        var currentState = _state;
-
-        switch (currentState)
+        var pendingEvent = ComputeTransition(isFailure, context);
+        if (pendingEvent.HasValue)
         {
-            case CircuitState.Closed:
-                if (isFailure)
-                {
-                    _window.RecordFailure();
-                }
-                else
-                {
-                    _window.RecordSuccess();
-                }
-
-                var failureRatio = _window.GetFailureRatio(out var totalCount);
-                if (failureRatio >= _options.FailureRatioThreshold
-                    && totalCount >= _options.MinimumThroughput)
-                {
-                    CircuitStateChangedEvent? pendingEvent = null;
-                    lock (_lock)
-                    {
-                        if (_state == CircuitState.Closed)
-                        {
-                            pendingEvent = Trip(context);
-                        }
-                    }
-
-                    FireEvent(pendingEvent);
-                }
-
-                break;
-
-            case CircuitState.HalfOpen:
-                CircuitStateChangedEvent? halfOpenEvent = null;
-                lock (_lock)
-                {
-                    if (_state != CircuitState.HalfOpen)
-                    {
-                        return;
-                    }
-
-                    if (isFailure)
-                    {
-                        halfOpenEvent = Trip(context);
-                    }
-                    else
-                    {
-                        _window.Reset();
-                        halfOpenEvent = TransitionTo(CircuitState.Closed, context);
-                    }
-                }
-
-                FireEvent(halfOpenEvent);
-                break;
+            FireEvent(pendingEvent.Value);
         }
     }
 

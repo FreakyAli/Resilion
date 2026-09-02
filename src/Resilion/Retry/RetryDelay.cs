@@ -98,8 +98,11 @@ public abstract record RetryDelay
     {
         internal override TimeSpan ComputeDelay(int attemptNumber, bool useJitter)
         {
-            var delay = BaseDelay * attemptNumber;
-            delay = Clamp(delay, MaxDelay);
+            // Prevent overflow: clamp total milliseconds before constructing TimeSpan
+            var baseMs = BaseDelay.TotalMilliseconds;
+            var maxMs = MaxDelay?.TotalMilliseconds ?? double.MaxValue;
+            var delayMs = Math.Min(baseMs * attemptNumber, maxMs);
+            var delay = TimeSpan.FromMilliseconds(delayMs);
             return useJitter ? ApplyJitter(delay, MaxDelay) : delay;
         }
     }

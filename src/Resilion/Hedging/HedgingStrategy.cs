@@ -98,13 +98,21 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
             }
 
             // Await all tasks to ensure resource cleanup (connections, streams, etc.).
-            // Use a bounded timeout to prevent indefinite hangs on non-cooperative tasks.
+            // Use a shared bounded deadline to prevent indefinite hangs on non-cooperative tasks.
             var cleanupTimeout = TimeSpan.FromSeconds(5);
+            var cleanupStart = _timeProvider.GetTimestamp();
             foreach (var task in attempts)
             {
                 try
                 {
-                    await Task.WhenAny(task, Task.Delay(cleanupTimeout)).ConfigureAwait(false);
+                    var elapsed = _timeProvider.GetElapsedTime(cleanupStart);
+                    var remaining = cleanupTimeout - elapsed;
+                    if (remaining <= TimeSpan.Zero)
+                    {
+                        break; // Deadline expired; stop waiting.
+                    }
+
+                    await Task.WhenAny(task, Task.Delay(remaining)).ConfigureAwait(false);
                 }
                 catch
                 {
