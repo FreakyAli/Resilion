@@ -28,6 +28,41 @@ public class ResiliencePipelineRegistryTests
     }
 
     [Fact]
+    public void GetPipeline_FailedLookupThenRegisterAndRetry_Succeeds()
+    {
+        // Regression test: Ensure failed lookups don't cache a faulted Lazy entry
+        using var registry = new ResiliencePipelineRegistry<string>();
+
+        // First attempt: unregistered key should throw
+        Assert.Throws<KeyNotFoundException>(() => registry.GetPipeline("retry-cache"));
+
+        // Register the pipeline after the failed attempt
+        registry.RegisterPipeline("retry-cache", b => b.AddRetry());
+
+        // Second attempt: should now succeed instead of replaying the cached failure
+        var pipeline = registry.GetPipeline("retry-cache");
+        Assert.NotNull(pipeline);
+    }
+
+    [Fact]
+    public void GetPipeline_Typed_FailedLookupThenRegisterAndRetry_Succeeds()
+    {
+        // Regression test: Ensure typed lookups don't cache a faulted Lazy entry
+        using var registry = new ResiliencePipelineRegistry<string>();
+
+        // First attempt: unregistered typed key should throw
+        Assert.Throws<KeyNotFoundException>(() => registry.GetPipeline<int>("typed-retry-cache"));
+
+        // Register the typed pipeline after the failed attempt
+        registry.RegisterPipeline<int>("typed-retry-cache", b =>
+            b.AddFallback(new FallbackStrategyOptions<int> { FallbackAction = 42 }));
+
+        // Second attempt: should now succeed instead of replaying the cached failure
+        var pipeline = registry.GetPipeline<int>("typed-retry-cache");
+        Assert.NotNull(pipeline);
+    }
+
+    [Fact]
     public void RegisterDuplicateKey_Throws()
     {
         using var registry = new ResiliencePipelineRegistry<string>();
