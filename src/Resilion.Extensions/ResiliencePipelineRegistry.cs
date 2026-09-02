@@ -7,7 +7,7 @@ namespace Resilion.Extensions;
 /// on first access and cached for the lifetime of the registry.
 /// </summary>
 /// <typeparam name="TKey">The key type for pipeline lookup. Typically <see cref="string"/>.</typeparam>
-public sealed class ResiliencePipelineRegistry<TKey> : IDisposable
+public sealed class ResiliencePipelineRegistry<TKey> : IPipelineProvider<TKey>, IDisposable
     where TKey : notnull
 {
     private readonly ConcurrentDictionary<TKey, Lazy<Pipeline>> _pipelines = new();
@@ -56,14 +56,15 @@ public sealed class ResiliencePipelineRegistry<TKey> : IDisposable
     /// <exception cref="KeyNotFoundException">No pipeline is registered with the specified key.</exception>
     public Pipeline GetPipeline(TKey key)
     {
+        // Validate factory exists before creating Lazy to prevent caching faulted entries
+        if (!_factories.TryGetValue(key, out var factory))
+        {
+            throw new KeyNotFoundException($"No pipeline registered with key '{key}'.");
+        }
+
         var lazy = _pipelines.GetOrAdd(key, _ => new Lazy<Pipeline>(() =>
         {
-            if (!_factories.TryGetValue(key, out var factory))
-            {
-                throw new KeyNotFoundException($"No pipeline registered with key '{key}'.");
-            }
-
-            var builder = new PipelineBuilder();
+            var builder = new PipelineBuilder { Name = key?.ToString() };
             factory(builder);
             return builder.Build();
         }));
@@ -80,16 +81,18 @@ public sealed class ResiliencePipelineRegistry<TKey> : IDisposable
     public Pipeline<TResult> GetPipeline<TResult>(TKey key)
     {
         var compositeKey = (key, typeof(TResult));
+
+        // Validate factory exists before creating Lazy to prevent caching faulted entries
+        if (!_typedFactories.TryGetValue(compositeKey, out var factory))
+        {
+            throw new KeyNotFoundException(
+                $"No pipeline registered with key '{key}' and result type '{typeof(TResult).Name}'.");
+        }
+
         var lazy = _typedPipelines.GetOrAdd(compositeKey, _ => new Lazy<object>(() =>
         {
-            if (!_typedFactories.TryGetValue(compositeKey, out var factory))
-            {
-                throw new KeyNotFoundException(
-                    $"No pipeline registered with key '{key}' and result type '{typeof(TResult).Name}'.");
-            }
-
             var configure = (Action<PipelineBuilder<TResult>>)factory;
-            var builder = new PipelineBuilder<TResult>();
+            var builder = new PipelineBuilder<TResult> { Name = key?.ToString() };
             configure(builder);
             return (object)builder.Build();
         }));

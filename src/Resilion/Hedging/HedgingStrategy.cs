@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace Resilion;
 
 /// <summary>
@@ -19,10 +21,23 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
         Func<ResilienceContext, ValueTask<Outcome<TResult>>> callback,
         ResilienceContext context)
     {
+        using var activity = ResilionTelemetry.ActivitySource.StartActivity("Hedging");
+        if (activity is not null)
+        {
+            activity.SetTag("strategy.name", "Hedging");
+            activity.SetTag("pipeline.name", context.PipelineName);
+            activity.SetTag("operation.key", context.OperationKey);
+        }
+
         if (_options.MaxHedgedAttempts == 1)
         {
             // No hedging — just execute the primary.
-            return await callback(context).ConfigureAwait(context.ContinueOnCapturedContext);
+            var result = await callback(context).ConfigureAwait(context.ContinueOnCapturedContext);
+            if (activity is not null)
+            {
+                activity.SetTag("outcome", result.IsSuccess ? "success" : "failure");
+            }
+            return result;
         }
 
         var userToken = context.CancellationToken;
@@ -74,7 +89,7 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
                 }
                 // Parallel mode (delay == 0): launch immediately, no waiting.
 
-                ResilionTelemetry.HedgingAttempts.Add(1);
+                ResilionTelemetry.HedgingAttempts.Add(1, new(ResilionTelemetry.PipelineNameTag, context.PipelineName), new(ResilionTelemetry.OperationKeyTag, context.OperationKey));
 
                 // Fire OnHedging event.
                 if (_options.OnHedging is { } handler && handler.HasHandler)
@@ -88,7 +103,12 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
             }
 
             // All attempts launched. Wait for the first success or all to fail.
-            return await WaitForBestOutcome(attempts, userToken).ConfigureAwait(false);
+            var outcome = await WaitForBestOutcome(attempts, userToken).ConfigureAwait(false);
+            if (activity is not null)
+            {
+                activity.SetTag("outcome", outcome.IsSuccess ? "success" : "hedging_exhausted");
+            }
+            return outcome;
         }
         finally
         {
@@ -140,8 +160,17 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
         Func<ResilienceContext, Outcome<TResult>> callback,
         ResilienceContext context)
     {
-        // Hedging is inherently async (parallel execution).
-        // For the sync path, execute sequentially (equivalent to InfiniteTimeSpan mode).
+        // Hedging's entire value proposition is running attempts concurrently. The sync path
+        // can only ever run sequentially — silently degrading parallel/latency hedging to
+        // sequential would give the caller zero indication their hedging isn't actually hedging.
+        if (_options.HedgingDelay != System.Threading.Timeout.InfiniteTimeSpan)
+        {
+            throw new InvalidOperationException(
+                "Parallel and latency hedging modes require async execution. Use ExecuteAsync(), " +
+                "or set HedgingDelay to Timeout.InfiniteTimeSpan for sequential mode.");
+        }
+
+        // Sequential mode: execute sequentially (equivalent to InfiniteTimeSpan mode).
         Outcome<TResult> lastOutcome = default;
 
         for (var attemptIndex = 0; attemptIndex < _options.MaxHedgedAttempts; attemptIndex++)

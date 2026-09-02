@@ -15,6 +15,59 @@ All metrics are on the `"Resilion"` meter.
 | `resilion.hedging.attempts` | Counter | Hedged attempt launches |
 | `resilion.rate_limiter.rejections` | Counter | Rate limit rejection |
 
+### Metric tags
+
+All counters are tagged with context about the operation:
+
+| Tag | Example | Notes |
+|-----|---------|-------|
+| `pipeline.name` | `"http-api"` | Name passed to `AddResiliencePipeline()` or pipeline name in registry |
+| `operation.key` | `"GET /users"` | Custom operation key from `ResilienceContext` |
+| `strategy` | `"retry"` | Strategy type (implicit in metric name) |
+
+Example: A `resilion.retry.attempts` counter for a named pipeline emits as:
+```
+resilion.retry.attempts{pipeline.name="http-api", operation.key="GET /users"} = 3
+```
+
+This allows dashboards and alerting rules to group by pipeline and operation.
+
+## ActivitySource spans
+
+Resilion also emits OpenTelemetry `Activity` spans for distributed tracing. Each strategy execution creates a span named after the strategy.
+
+### Subscribing to ActivitySource
+
+```csharp
+builder.Services.AddOpenTelemetry()
+    .WithTracing(t => t.AddSource("Resilion"));
+```
+
+Or configure a global listener:
+
+```csharp
+var listener = new ActivityListener
+{
+    ShouldListenTo = source => source.Name == "Resilion",
+    Sample = (ref ActivityCreationOptions<ActivityContext> _) => ActivitySamplingResult.AllData,
+};
+ActivitySource.AddActivityListener(listener);
+```
+
+### Span names and tags
+
+Each strategy creates a span with contextual information:
+
+```
+Activity.OperationName = "Retry"  // or Timeout, CircuitBreaker, etc.
+Activity.Tags:
+  - "strategy" → "retry"
+  - "pipeline.name" → "http-api"
+  - "operation.key" → "GET /users"
+  - "attempt" → "1" (for retryable strategies)
+  - "duration_ms" → "150" (execution time)
+```
+
 ## Subscribing
 
 ### dotnet-counters (CLI)

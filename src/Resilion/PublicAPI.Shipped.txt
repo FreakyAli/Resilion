@@ -1,0 +1,4 @@
+# This file tracks the public API surface of Resilion v1.0.
+# It will be generated after v1.0 is shipped using PublicApiAnalyzers.
+# Until then, it serves as a placeholder to enable the analyzer.
+# See: https://github.com/dotnet/roslyn-analyzers/blob/main/src/PublicApiAnalyzers/PublicApiAnalyzers.Help.md

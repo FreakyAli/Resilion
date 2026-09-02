@@ -28,6 +28,41 @@ public class ResiliencePipelineRegistryTests
     }
 
     [Fact]
+    public void GetPipeline_FailedLookupThenRegisterAndRetry_Succeeds()
+    {
+        // Regression test: Ensure failed lookups don't cache a faulted Lazy entry
+        using var registry = new ResiliencePipelineRegistry<string>();
+
+        // First attempt: unregistered key should throw
+        Assert.Throws<KeyNotFoundException>(() => registry.GetPipeline("retry-cache"));
+
+        // Register the pipeline after the failed attempt
+        registry.RegisterPipeline("retry-cache", b => b.AddRetry());
+
+        // Second attempt: should now succeed instead of replaying the cached failure
+        var pipeline = registry.GetPipeline("retry-cache");
+        Assert.NotNull(pipeline);
+    }
+
+    [Fact]
+    public void GetPipeline_Typed_FailedLookupThenRegisterAndRetry_Succeeds()
+    {
+        // Regression test: Ensure typed lookups don't cache a faulted Lazy entry
+        using var registry = new ResiliencePipelineRegistry<string>();
+
+        // First attempt: unregistered typed key should throw
+        Assert.Throws<KeyNotFoundException>(() => registry.GetPipeline<int>("typed-retry-cache"));
+
+        // Register the typed pipeline after the failed attempt
+        registry.RegisterPipeline<int>("typed-retry-cache", b =>
+            b.AddFallback(new FallbackStrategyOptions<int> { FallbackAction = 42 }));
+
+        // Second attempt: should now succeed instead of replaying the cached failure
+        var pipeline = registry.GetPipeline<int>("typed-retry-cache");
+        Assert.NotNull(pipeline);
+    }
+
+    [Fact]
     public void RegisterDuplicateKey_Throws()
     {
         using var registry = new ResiliencePipelineRegistry<string>();
@@ -116,10 +151,10 @@ public class ResiliencePipelineRegistryTests
 public class ServiceCollectionExtensionsTests
 {
     [Fact]
-    public void AddResilion_RegistersRegistry()
+    public void AddResilienceServices_RegistersRegistry()
     {
         var services = new ServiceCollection();
-        services.AddResilion();
+        services.AddResilienceServices();
 
         var sp = services.BuildServiceProvider();
         var registry = sp.GetService<ResiliencePipelineRegistry<string>>();
@@ -128,10 +163,10 @@ public class ServiceCollectionExtensionsTests
     }
 
     [Fact]
-    public void AddResilion_RegistersContextPool()
+    public void AddResilienceServices_RegistersContextPool()
     {
         var services = new ServiceCollection();
-        services.AddResilion();
+        services.AddResilienceServices();
 
         var sp = services.BuildServiceProvider();
         var pool = sp.GetService<ResilienceContextPool>();
@@ -139,6 +174,33 @@ public class ServiceCollectionExtensionsTests
         Assert.NotNull(pool);
         Assert.Same(ResilienceContextPool.Shared, pool);
     }
+
+    [Fact]
+    public void AddResilienceServices_RegistersPipelineProviderAsSameInstanceAsRegistry()
+    {
+        var services = new ServiceCollection();
+        services.AddResilienceServices();
+
+        var sp = services.BuildServiceProvider();
+        var registry = sp.GetRequiredService<ResiliencePipelineRegistry<string>>();
+        var provider = sp.GetRequiredService<IPipelineProvider<string>>();
+
+        Assert.Same(registry, provider);
+    }
+
+#pragma warning disable CS0618 // Testing the obsolete alias intentionally
+    [Fact]
+    public void AddResilion_ObsoleteAlias_StillRegistersServices()
+    {
+        var services = new ServiceCollection();
+        services.AddResilion();
+
+        var sp = services.BuildServiceProvider();
+
+        Assert.NotNull(sp.GetService<ResiliencePipelineRegistry<string>>());
+        Assert.NotNull(sp.GetService<IPipelineProvider<string>>());
+    }
+#pragma warning restore CS0618
 
     [Fact]
     public async Task AddResiliencePipeline_ResolvesViaRegistry()
@@ -182,12 +244,51 @@ public class ServiceCollectionExtensionsTests
     }
 
     [Fact]
-    public void AddResilion_Idempotent()
+    public async Task AddResiliencePipeline_DiRoundTrip_ResolvesViaPipelineProvider()
     {
         var services = new ServiceCollection();
-        services.AddResilion();
-        services.AddResilion();
-        services.AddResilion();
+        services.AddResiliencePipeline("http-retry", b => b
+            .AddRetry(new RetryStrategyOptions { MaxRetryAttempts = 1, Delay = RetryDelay.None })
+            .AddTimeout(TimeSpan.FromSeconds(30)));
+
+        var sp = services.BuildServiceProvider();
+
+        // Resolve through the full DI container — no manual BuildRegistry call.
+        var provider = sp.GetRequiredService<IPipelineProvider<string>>();
+        var pipeline = provider.GetPipeline("http-retry");
+
+        var result = await pipeline.ExecuteAsync(ct => new ValueTask<string>("ok"));
+        Assert.Equal("ok", result);
+    }
+
+    [Fact]
+    public async Task AddResiliencePipeline_Typed_DiRoundTrip_ResolvesViaPipelineProvider()
+    {
+        var services = new ServiceCollection();
+        services.AddResiliencePipeline<int>("fallback-pipeline", b => b
+            .AddFallback(new FallbackStrategyOptions<int> { FallbackAction = 42 }));
+
+        var sp = services.BuildServiceProvider();
+
+        var provider = sp.GetRequiredService<IPipelineProvider<string>>();
+        var pipeline = provider.GetPipeline<int>("fallback-pipeline");
+
+        var result = await pipeline.ExecuteAsync(ct =>
+        {
+            throw new Exception("fail");
+            return new ValueTask<int>(0);
+        });
+
+        Assert.Equal(42, result);
+    }
+
+    [Fact]
+    public void AddResilienceServices_Idempotent()
+    {
+        var services = new ServiceCollection();
+        services.AddResilienceServices();
+        services.AddResilienceServices();
+        services.AddResilienceServices();
 
         var sp = services.BuildServiceProvider();
         var registries = sp.GetServices<ResiliencePipelineRegistry<string>>().ToList();

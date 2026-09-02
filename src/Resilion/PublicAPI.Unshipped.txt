@@ -1,0 +1,242 @@
+#nullable enable
+
+# New public APIs for Resilion (yet to ship).
+# Entries here should be moved to PublicAPI.Shipped.txt upon release.
+
+namespace Resilion;
+
+CircuitBreakerExtensions
+CircuitBreakerExtensions.AddCircuitBreaker(this PipelineBuilder! builder, CircuitBreakerStrategyOptions? options) -> PipelineBuilder!
+CircuitBreakerExtensions.AddCircuitBreaker<TResult>(this PipelineBuilder<TResult>! builder, CircuitBreakerStrategyOptions<TResult>! options) -> PipelineBuilder<TResult>!
+CircuitBreakerExtensions.AddCircuitBreaker<TResult>(this PipelineBuilder<TResult>! builder, CircuitBreakerStrategyOptions? options) -> PipelineBuilder<TResult>!
+
+CircuitBreakerManualControl
+CircuitBreakerManualControl.IsolateAsync() -> System.Threading.Tasks.Task!
+CircuitBreakerManualControl.ResetAsync() -> System.Threading.Tasks.Task!
+
+CircuitBreakerStrategyOptions
+CircuitBreakerStrategyOptions.FailureRatioThreshold.get -> double
+CircuitBreakerStrategyOptions.SamplingDuration.get -> System.TimeSpan
+CircuitBreakerStrategyOptions.MinimumThroughput.get -> int
+CircuitBreakerStrategyOptions.BreakDuration.get -> System.TimeSpan
+CircuitBreakerStrategyOptions.BreakDurationGenerator.get -> System.Func<BreakDurationGeneratorArgs, System.TimeSpan>?
+CircuitBreakerStrategyOptions.ShouldHandle.get -> System.Func<System.Exception, bool>?
+CircuitBreakerStrategyOptions.OnOpened.get -> ResilienceEventHandler<CircuitStateChangedEvent>?
+CircuitBreakerStrategyOptions.OnClosed.get -> ResilienceEventHandler<CircuitStateChangedEvent>?
+CircuitBreakerStrategyOptions.OnHalfOpened.get -> ResilienceEventHandler<CircuitStateChangedEvent>?
+CircuitBreakerStrategyOptions.ManualControl.get -> CircuitBreakerManualControl?
+
+CircuitBreakerStrategyOptions<TResult>
+CircuitBreakerStrategyOptions<TResult>.FailureRatioThreshold.get -> double
+CircuitBreakerStrategyOptions<TResult>.SamplingDuration.get -> System.TimeSpan
+CircuitBreakerStrategyOptions<TResult>.MinimumThroughput.get -> int
+CircuitBreakerStrategyOptions<TResult>.BreakDuration.get -> System.TimeSpan
+CircuitBreakerStrategyOptions<TResult>.BreakDurationGenerator.get -> System.Func<BreakDurationGeneratorArgs, System.TimeSpan>?
+CircuitBreakerStrategyOptions<TResult>.ShouldHandle.get -> System.Func<Outcome<TResult>, bool>?
+CircuitBreakerStrategyOptions<TResult>.OnOpened.get -> ResilienceEventHandler<CircuitStateChangedEvent>?
+CircuitBreakerStrategyOptions<TResult>.OnClosed.get -> ResilienceEventHandler<CircuitStateChangedEvent>?
+CircuitBreakerStrategyOptions<TResult>.OnHalfOpened.get -> ResilienceEventHandler<CircuitStateChangedEvent>?
+CircuitBreakerStrategyOptions<TResult>.ManualControl.get -> CircuitBreakerManualControl?
+
+CircuitBrokenException
+CircuitBrokenException.CircuitState.get -> CircuitState
+CircuitBrokenException.RetryAfter.get -> System.TimeSpan
+
+CircuitState
+CircuitState.Closed = 0
+CircuitState.Open = 1
+CircuitState.HalfOpen = 2
+CircuitState.Isolated = 3
+
+FallbackAction<TResult>
+FallbackAction<TResult>.HasValue.get -> bool
+
+FallbackExtensions
+FallbackExtensions.AddFallback<TResult>(this PipelineBuilder<TResult>! builder, FallbackStrategyOptions<TResult>! options) -> PipelineBuilder<TResult>!
+
+FallbackStrategyOptions<TResult>
+FallbackStrategyOptions<TResult>.FallbackAction.get -> FallbackAction<TResult>
+FallbackStrategyOptions<TResult>.ShouldHandle.get -> System.Func<Outcome<TResult>, bool>?
+FallbackStrategyOptions<TResult>.OnFallback.get -> ResilienceEventHandler<OnFallbackEvent<TResult>>?
+
+HedgingExtensions
+HedgingExtensions.AddHedging<TResult>(this PipelineBuilder<TResult>! builder, HedgingStrategyOptions<TResult>! options) -> PipelineBuilder<TResult>!
+
+HedgingStrategyOptions<TResult>
+HedgingStrategyOptions<TResult>.Delay.get -> System.TimeSpan
+HedgingStrategyOptions<TResult>.MaxHedgedAttempts.get -> int
+HedgingStrategyOptions<TResult>.ShouldHandle.get -> System.Func<Outcome<TResult>, bool>?
+HedgingStrategyOptions<TResult>.OnHedging.get -> ResilienceEventHandler<OnHedgingEvent<TResult>>?
+
+Outcome<TResult>
+Outcome<TResult>.IsSuccess.get -> bool
+Outcome<TResult>.IsFailure.get -> bool
+Outcome<TResult>.Exception.get -> System.Exception?
+Outcome<TResult>.Result.get -> TResult
+Outcome<TResult>.TryGetResult(out TResult) -> bool
+Outcome<TResult>.GetResultOrDefault(TResult) -> TResult
+Outcome<TResult>.ThrowIfFailed() -> TResult
+Outcome<TResult>.Match<T>(System.Func<TResult, T>!, System.Func<System.Exception, T>!) -> T
+Outcome<TResult>.FromResult(TResult) -> Outcome<TResult>
+Outcome<TResult>.FromException(System.Exception!) -> Outcome<TResult>
+Outcome<TResult>.operator ==(Outcome<TResult>, Outcome<TResult>) -> bool
+Outcome<TResult>.operator !=(Outcome<TResult>, Outcome<TResult>) -> bool
+Outcome<TResult>.operator implicit(TResult) -> Outcome<TResult>
+
+Pipeline
+Pipeline.Empty.get -> Pipeline!
+Pipeline.Create(System.Action<PipelineBuilder>!) -> Pipeline!
+Pipeline.Create<TResult>(System.Action<PipelineBuilder<TResult>>!) -> Pipeline<TResult>!
+Pipeline.ExecuteAsync<TResult, TState>(System.Func<TState, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<TResult>>!, TState, System.Threading.CancellationToken) -> System.Threading.Tasks.ValueTask<TResult>
+Pipeline.ExecuteAsync<TResult>(System.Func<System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<TResult>>!, System.Threading.CancellationToken) -> System.Threading.Tasks.ValueTask<TResult>
+Pipeline.ExecuteAsync(System.Func<System.Threading.CancellationToken, System.Threading.Tasks.ValueTask>!, System.Threading.CancellationToken) -> System.Threading.Tasks.ValueTask
+Pipeline.ExecuteOutcomeAsync<TResult, TState>(System.Func<TState, ResilienceContext!, System.Threading.Tasks.ValueTask<Outcome<TResult>>>!, TState, ResilienceContext!) -> System.Threading.Tasks.ValueTask<Outcome<TResult>>
+Pipeline.Execute<TResult, TState>(System.Func<TState, System.Threading.CancellationToken, TResult>!, TState, System.Threading.CancellationToken) -> TResult
+Pipeline.Execute<TResult>(System.Func<System.Threading.CancellationToken, TResult>!, System.Threading.CancellationToken) -> TResult
+Pipeline.Execute(System.Action<System.Threading.CancellationToken>!, System.Threading.CancellationToken) -> void
+Pipeline.Dispose() -> void
+Pipeline.DisposeAsync() -> System.Threading.Tasks.ValueTask
+
+Pipeline<TResult>
+Pipeline<TResult>.Empty.get -> Pipeline<TResult>!
+Pipeline<TResult>.ExecuteAsync<TState>(System.Func<TState, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<TResult>>!, TState, System.Threading.CancellationToken) -> System.Threading.Tasks.ValueTask<TResult>
+Pipeline<TResult>.ExecuteAsync(System.Func<System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<TResult>>!, System.Threading.CancellationToken) -> System.Threading.Tasks.ValueTask<TResult>
+Pipeline<TResult>.ExecuteOutcomeAsync<TState>(System.Func<TState, ResilienceContext!, System.Threading.Tasks.ValueTask<Outcome<TResult>>>!, TState, ResilienceContext!) -> System.Threading.Tasks.ValueTask<Outcome<TResult>>
+Pipeline<TResult>.Execute<TState>(System.Func<TState, System.Threading.CancellationToken, TResult>!, TState, System.Threading.CancellationToken) -> TResult
+Pipeline<TResult>.Execute(System.Func<System.Threading.CancellationToken, TResult>!, System.Threading.CancellationToken) -> TResult
+Pipeline<TResult>.Dispose() -> void
+Pipeline<TResult>.DisposeAsync() -> System.Threading.Tasks.ValueTask
+
+PipelineBuilder
+PipelineBuilder.Name.get -> string?
+PipelineBuilder.Name.set -> void
+PipelineBuilder.TimeProvider.get -> System.TimeProvider!
+PipelineBuilder.TimeProvider.set -> void
+PipelineBuilder.SuppressOrderingWarnings.get -> bool
+PipelineBuilder.SuppressOrderingWarnings.set -> void
+PipelineBuilder.ThrowOnOrderingErrors.get -> bool
+PipelineBuilder.ThrowOnOrderingErrors.set -> void
+PipelineBuilder.OnValidationWarning.get -> System.Action<string>?
+PipelineBuilder.OnValidationWarning.set -> void
+PipelineBuilder.AddStrategy(Strategy!) -> PipelineBuilder!
+PipelineBuilder.AddPipeline(Pipeline!) -> PipelineBuilder!
+PipelineBuilder.Build() -> Pipeline!
+
+PipelineBuilder<TResult>
+PipelineBuilder<TResult>.Name.get -> string?
+PipelineBuilder<TResult>.Name.set -> void
+PipelineBuilder<TResult>.TimeProvider.get -> System.TimeProvider!
+PipelineBuilder<TResult>.TimeProvider.set -> void
+PipelineBuilder<TResult>.SuppressOrderingWarnings.get -> bool
+PipelineBuilder<TResult>.SuppressOrderingWarnings.set -> void
+PipelineBuilder<TResult>.ThrowOnOrderingErrors.get -> bool
+PipelineBuilder<TResult>.ThrowOnOrderingErrors.set -> void
+PipelineBuilder<TResult>.OnValidationWarning.get -> System.Action<string>?
+PipelineBuilder<TResult>.OnValidationWarning.set -> void
+PipelineBuilder<TResult>.AddStrategy(Strategy!) -> PipelineBuilder<TResult>!
+PipelineBuilder<TResult>.AddStrategy(Strategy<TResult>!) -> PipelineBuilder<TResult>!
+PipelineBuilder<TResult>.AddStrategy(string!, System.Func<ResilienceContext!, System.Func<ResilienceContext!, System.Threading.Tasks.ValueTask<Outcome<TResult>>>, System.Threading.Tasks.ValueTask<Outcome<TResult>>>!) -> PipelineBuilder<TResult>!
+PipelineBuilder<TResult>.AddPipeline(Pipeline<TResult>!) -> PipelineBuilder<TResult>!
+PipelineBuilder<TResult>.AddPipeline(Pipeline!) -> PipelineBuilder<TResult>!
+PipelineBuilder<TResult>.Build() -> Pipeline<TResult>!
+
+PipelineBuilderBase
+PipelineBuilderBase.Name.get -> string?
+PipelineBuilderBase.Name.set -> void
+PipelineBuilderBase.TimeProvider.get -> System.TimeProvider!
+PipelineBuilderBase.TimeProvider.set -> void
+PipelineBuilderBase.SuppressOrderingWarnings.get -> bool
+PipelineBuilderBase.SuppressOrderingWarnings.set -> void
+PipelineBuilderBase.ThrowOnOrderingErrors.get -> bool
+PipelineBuilderBase.ThrowOnOrderingErrors.set -> void
+PipelineBuilderBase.OnValidationWarning.get -> System.Action<string>?
+PipelineBuilderBase.OnValidationWarning.set -> void
+
+ResilienceContext
+ResilienceContext.CancellationToken.get -> System.Threading.CancellationToken
+ResilienceContext.CancellationToken.set -> void
+ResilienceContext.OperationKey.get -> string?
+ResilienceContext.OperationKey.set -> void
+ResilienceContext.ContinueOnCapturedContext.get -> bool
+ResilienceContext.ContinueOnCapturedContext.set -> void
+ResilienceContext.Properties.get -> ResilienceProperties!
+
+ResilienceContextPool
+ResilienceContextPool.Shared.get -> ResilienceContextPool!
+ResilienceContextPool.Rent(System.Threading.CancellationToken) -> ResilienceContext!
+ResilienceContextPool.Return(ResilienceContext!) -> void
+
+ResilienceEventHandler<TEvent>
+ResilienceEventHandler<TEvent>.Invoke(TEvent, ResilienceContext!) -> System.Threading.Tasks.ValueTask
+
+ResilienceProperties
+ResilienceProperties.Set<TValue>(ResiliencePropertyKey<TValue>, TValue) -> void
+ResilienceProperties.TryGetValue<TValue>(ResiliencePropertyKey<TValue>, out TValue?) -> bool
+ResilienceProperties.GetValue<TValue>(ResiliencePropertyKey<TValue>, TValue) -> TValue
+ResilienceProperties.Remove<TValue>(ResiliencePropertyKey<TValue>) -> bool
+ResilienceProperties.Count.get -> int
+
+ResiliencePropertyKey<TValue>
+ResiliencePropertyKey<TValue>.ResiliencePropertyKey(string!) -> void
+ResiliencePropertyKey<TValue>.Key.get -> string!
+ResiliencePropertyKey<TValue>.Equals(ResiliencePropertyKey<TValue>) -> bool
+ResiliencePropertyKey<TValue>.operator ==(ResiliencePropertyKey<TValue>, ResiliencePropertyKey<TValue>) -> bool
+ResiliencePropertyKey<TValue>.operator !=(ResiliencePropertyKey<TValue>, ResiliencePropertyKey<TValue>) -> bool
+
+ResilionException
+ResilionException.ResilionException(string!) -> void
+ResilionException.ResilionException(string!, System.Exception!) -> void
+
+RetryExtensions
+RetryExtensions.AddRetry(this PipelineBuilder! builder, RetryStrategyOptions? options) -> PipelineBuilder!
+RetryExtensions.AddRetry<TResult>(this PipelineBuilder<TResult>! builder, RetryStrategyOptions<TResult>! options) -> PipelineBuilder<TResult>!
+RetryExtensions.AddRetry<TResult>(this PipelineBuilder<TResult>! builder, RetryStrategyOptions? options) -> PipelineBuilder<TResult>!
+
+RetryStrategyOptions
+RetryStrategyOptions.MaxRetryAttempts.get -> int
+RetryStrategyOptions.Delay.get -> RetryDelay!
+RetryStrategyOptions.UseJitter.get -> bool
+RetryStrategyOptions.MaxDelay.get -> System.TimeSpan?
+RetryStrategyOptions.ShouldHandle.get -> System.Func<System.Exception, bool>?
+RetryStrategyOptions.OnRetry.get -> ResilienceEventHandler<RetryAttemptEvent>?
+
+RetryStrategyOptions<TResult>
+RetryStrategyOptions<TResult>.MaxRetryAttempts.get -> int
+RetryStrategyOptions<TResult>.Delay.get -> RetryDelay!
+RetryStrategyOptions<TResult>.UseJitter.get -> bool
+RetryStrategyOptions<TResult>.MaxDelay.get -> System.TimeSpan?
+RetryStrategyOptions<TResult>.ShouldHandle.get -> System.Func<Outcome<TResult>, bool>?
+RetryStrategyOptions<TResult>.OnRetry.get -> ResilienceEventHandler<RetryAttemptEvent>?
+
+RetryDelay
+RetryDelay.Constant(System.TimeSpan) -> RetryDelay!
+RetryDelay.Linear(System.TimeSpan, System.TimeSpan) -> RetryDelay!
+RetryDelay.Exponential(System.TimeSpan) -> RetryDelay!
+RetryDelay.Exponential(System.TimeSpan, System.TimeSpan) -> RetryDelay!
+RetryDelay.Custom(System.Func<int, System.TimeSpan>!) -> RetryDelay!
+
+Strategy
+Strategy.ExecuteAsync<TResult>(System.Func<ResilienceContext!, System.Threading.Tasks.ValueTask<Outcome<TResult>>>!, ResilienceContext!) -> System.Threading.Tasks.ValueTask<Outcome<TResult>>
+Strategy.Execute<TResult>(System.Func<ResilienceContext!, Outcome<TResult>>!, ResilienceContext!) -> Outcome<TResult>
+Strategy.Dispose() -> void
+Strategy.DisposeAsync() -> System.Threading.Tasks.ValueTask
+
+Strategy<TResult>
+Strategy<TResult>.ExecuteAsync(System.Func<ResilienceContext!, System.Threading.Tasks.ValueTask<Outcome<TResult>>>!, ResilienceContext!) -> System.Threading.Tasks.ValueTask<Outcome<TResult>>
+Strategy<TResult>.Execute(System.Func<ResilienceContext!, Outcome<TResult>>!, ResilienceContext!) -> Outcome<TResult>
+Strategy<TResult>.Dispose() -> void
+Strategy<TResult>.DisposeAsync() -> System.Threading.Tasks.ValueTask
+
+TimeoutExtensions
+TimeoutExtensions.AddTimeout(this PipelineBuilder! builder, System.TimeSpan timeout) -> PipelineBuilder!
+TimeoutExtensions.AddTimeout(this PipelineBuilder! builder, TimeoutStrategyOptions? options) -> PipelineBuilder!
+TimeoutExtensions.AddTimeout<TResult>(this PipelineBuilder<TResult>! builder, System.TimeSpan timeout) -> PipelineBuilder<TResult>!
+TimeoutExtensions.AddTimeout<TResult>(this PipelineBuilder<TResult>! builder, TimeoutStrategyOptions? options) -> PipelineBuilder<TResult>!
+
+TimeoutRejectedException
+TimeoutRejectedException.ConfiguredTimeout.get -> System.TimeSpan
+TimeoutRejectedException.ElapsedTime.get -> System.TimeSpan
+
+TimeoutStrategyOptions
+TimeoutStrategyOptions.Timeout.get -> System.TimeSpan
+TimeoutStrategyOptions.Timeout.set -> void

@@ -1,0 +1,25 @@
+#nullable enable
+
+# New public APIs for Resilion.Extensions (yet to ship).
+# Entries here should be moved to PublicAPI.Shipped.txt upon release.
+
+namespace Resilion.Extensions;
+
+IPipelineProvider<TKey>
+IPipelineProvider<TKey>.GetPipeline(TKey) -> Resilion.Pipeline!
+IPipelineProvider<TKey>.GetPipeline<TResult>(TKey) -> Resilion.Pipeline<TResult>!
+IPipelineProvider<TKey>.TryGetPipeline(TKey, out Resilion.Pipeline?) -> bool
+
+ResilionServiceCollectionExtensions
+ResilionServiceCollectionExtensions.AddResilienceServices(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+ResilionServiceCollectionExtensions.AddResilion(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+ResilionServiceCollectionExtensions.AddResiliencePipeline(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, string! name, System.Action<Resilion.PipelineBuilder>! configure) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+ResilionServiceCollectionExtensions.AddResiliencePipeline<TResult>(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, string! name, System.Action<Resilion.PipelineBuilder<TResult>>! configure) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+
+ResiliencePipelineRegistry<TKey>
+ResiliencePipelineRegistry<TKey>.RegisterPipeline(TKey!, System.Action<Resilion.PipelineBuilder>!) -> void
+ResiliencePipelineRegistry<TKey>.RegisterPipeline<TResult>(TKey!, System.Action<Resilion.PipelineBuilder<TResult>>!) -> void
+ResiliencePipelineRegistry<TKey>.GetPipeline(TKey!) -> Resilion.Pipeline!
+ResiliencePipelineRegistry<TKey>.GetPipeline<TResult>(TKey!) -> Resilion.Pipeline<TResult>!
+ResiliencePipelineRegistry<TKey>.TryGetPipeline(TKey!, out Resilion.Pipeline?) -> bool
+ResiliencePipelineRegistry<TKey>.Dispose() -> void

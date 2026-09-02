@@ -50,6 +50,28 @@ b.AddRetry(...);
 b.AddTimeout(TimeSpan.FromSeconds(10));
 ```
 
+### Ordering validation
+
+`Build()` checks the strategy order for two dangerous misorderings — CircuitBreaker outside Retry (retries would bypass the breaker) and Fallback not outermost (it wouldn't catch failures from strategies placed outside it) — and **throws `InvalidOperationException` by default**:
+
+```csharp
+// Throws: CircuitBreaker must be inside (after) Retry.
+Pipeline.Create(b => b.AddCircuitBreaker().AddRetry());
+```
+
+Set `ThrowOnOrderingErrors = false` to only warn instead (via `OnValidationWarning`, or `Debug.WriteLine` if that's not set):
+
+```csharp
+Pipeline.Create(b =>
+{
+    b.ThrowOnOrderingErrors = false;
+    b.OnValidationWarning = warning => logger.LogWarning(warning);
+    b.AddCircuitBreaker().AddRetry();
+});
+```
+
+Situational issues — Hedging + Retry together, 3+ Timeouts, Retry outermost with no Timeout — are always advisory warnings, never thrown, regardless of `ThrowOnOrderingErrors`. Set `SuppressOrderingWarnings = true` to skip ordering validation entirely (both errors and warnings).
+
 ## Pipeline composition
 
 Combine pre-built pipelines with `AddPipeline`:

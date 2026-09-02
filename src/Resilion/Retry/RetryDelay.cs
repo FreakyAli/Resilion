@@ -21,7 +21,12 @@ public abstract record RetryDelay
     /// Creates a constant delay (same duration for every retry).
     /// </summary>
     /// <param name="delay">The fixed delay between retries.</param>
-    public static RetryDelay Constant(TimeSpan delay) => new ConstantDelay(delay);
+    public static RetryDelay Constant(TimeSpan delay)
+    {
+        if (delay < TimeSpan.Zero)
+            throw new ArgumentException("Delay cannot be negative.", nameof(delay));
+        return new ConstantDelay(delay);
+    }
 
     /// <summary>
     /// Creates a linearly increasing delay (baseDelay × attemptNumber).
@@ -29,7 +34,13 @@ public abstract record RetryDelay
     /// <param name="baseDelay">The base delay that scales linearly.</param>
     /// <param name="maxDelay">Optional cap on the delay. Defaults to no cap.</param>
     public static RetryDelay Linear(TimeSpan baseDelay, TimeSpan? maxDelay = null)
-        => new LinearDelay(baseDelay, maxDelay);
+    {
+        if (baseDelay < TimeSpan.Zero)
+            throw new ArgumentException("Base delay cannot be negative.", nameof(baseDelay));
+        if (maxDelay.HasValue && maxDelay.Value < TimeSpan.Zero)
+            throw new ArgumentException("Max delay cannot be negative.", nameof(maxDelay));
+        return new LinearDelay(baseDelay, maxDelay);
+    }
 
     /// <summary>
     /// Creates an exponentially increasing delay (baseDelay × 2^attemptNumber).
@@ -37,7 +48,13 @@ public abstract record RetryDelay
     /// <param name="baseDelay">The base delay for the first retry.</param>
     /// <param name="maxDelay">Optional cap on the delay. Defaults to 30 seconds.</param>
     public static RetryDelay Exponential(TimeSpan baseDelay, TimeSpan? maxDelay = null)
-        => new ExponentialDelay(baseDelay, maxDelay ?? TimeSpan.FromSeconds(30));
+    {
+        if (baseDelay < TimeSpan.Zero)
+            throw new ArgumentException("Base delay cannot be negative.", nameof(baseDelay));
+        if (maxDelay.HasValue && maxDelay.Value < TimeSpan.Zero)
+            throw new ArgumentException("Max delay cannot be negative.", nameof(maxDelay));
+        return new ExponentialDelay(baseDelay, maxDelay ?? TimeSpan.FromSeconds(30));
+    }
 
     /// <summary>
     /// Creates a fully custom delay computation.

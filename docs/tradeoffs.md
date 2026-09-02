@@ -32,25 +32,21 @@ When pipelines are composed via `AddPipeline()`, the `DelegatingComponent` does 
 
 ## ResilienceContextPool cap is approximate
 
-The pool size check (`_pool.Count < MaxPoolSize`) followed by `_pool.Add(context)` is a TOCTOU race — concurrent `Return()` calls can overshoot `MaxPoolSize` unboundedly. The excess contexts are held in the `ConcurrentBag` and are never collected — `Rent` via `_pool.TryTake` is the only removal path.
+The cap check (`Interlocked.Increment(ref _count) <= _maxPoolSize`) followed by `_pool.Add(context)` is a TOCTOU race — concurrent `Return()` calls can overshoot `_maxPoolSize` unboundedly. The excess contexts are held in the `ConcurrentBag` and are never collected — `Rent` via `_pool.TryTake` is the only removal path.
 
-**Why it's acceptable:** The cap is a heuristic, not a hard limit. Enforcing exactly 256 would require a lock on every return for zero practical benefit. Under burst traffic the pool might grow beyond the target, but this is transient and trades memory for lock-free concurrent access. The contexts are small (~200 bytes) and in steady state the pool converges to size. The alternative — `ConcurrentBag.Count` with exact enforcement — is worse because `Count` itself is expensive (see future-plans #25).
+`_maxPoolSize` defaults to 256 but is configurable via `new ResilienceContextPool(maxPoolSize)` — the shared `ResilienceContextPool.Shared` instance always uses the default.
 
-**Watch for:** Don't rely on the pool being exactly 256 items or fewer. It's a soft cap. Under sustained traffic, the pool size may exceed the target.
+**Why it's acceptable:** The cap is a heuristic, not a hard limit. Enforcing it exactly would require a lock on every return for zero practical benefit. Under burst traffic the pool might grow beyond the target, but this is transient and trades memory for lock-free concurrent access. The contexts are small (~200 bytes) and in steady state the pool converges to size. The alternative — `ConcurrentBag.Count` with exact enforcement — is worse because `Count` itself is expensive (see future-plans #25).
+
+**Watch for:** Don't rely on the pool staying at or under its configured cap. It's a soft cap. Under sustained traffic, the pool size may exceed the target.
 
 **Location:** [ResilienceContextPool.cs](../src/Resilion/ResilienceContextPool.cs) — `Return()`
 
 ---
 
-## Timeout cancellation classification has a narrow race window
+## ~~Timeout cancellation classification has a narrow race window~~ — MOVED
 
-`WasCancelledByTimeout` checks `linkedCts.IsCancellationRequested && !userToken.IsCancellationRequested`. Between the two checks, the user token could become cancelled, causing user cancellation to be misclassified as a timeout.
-
-**Why it's acceptable:** The window is nanoseconds wide and requires the user token to cancel at the exact instant between two boolean reads. In practice this is not observable. The consequence (a `TimeoutRejectedException` instead of `OperationCanceledException`) is also recoverable — the caller catches `ResilionException` or the base `Exception` either way.
-
-**Watch for:** If your code strictly distinguishes timeout from cancellation and you're seeing rare misclassification under extreme concurrent cancellation, this is the cause.
-
-**Location:** [TimeoutStrategy.cs](../src/Resilion/Timeout/TimeoutStrategy.cs) — `WasCancelledByTimeout()`
+This was a solvable issue, not a true tradeoff. Moved to [future-plans.md](future-plans.md) as **#46** (P2 fix).
 
 ---
 

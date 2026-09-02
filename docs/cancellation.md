@@ -75,7 +75,7 @@ The Timeout strategy distinguishes the two by checking which token fired:
 | Yes | Yes (linked) | `OperationCanceledException` |
 | No | No | Success (completed in time) |
 
-There is a narrow TOCTOU race where user cancellation between checks could be misclassified as timeout. This is nanoseconds wide and not observable in practice. See [future-plans.md](future-plans.md#timeout-cancellation-classification-has-a-narrow-race-window).
+There is a narrow TOCTOU race where user cancellation between checks could be misclassified as timeout. This is nanoseconds wide and not observable in practice. Tracked as a fix in [future-plans.md](future-plans.md#46-timeout-cancellation-toctou-race-fix).
 
 ## Cooperative cancellation
 

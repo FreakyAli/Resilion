@@ -91,7 +91,7 @@ This is a key difference from Polly, which cancels but does not await losing tas
 
 ## All attempts fail
 
-When every attempt fails, the last failure's exception propagates. Only the most recent exception surfaces — earlier attempt exceptions are not aggregated. (See [future-plans.md](future-plans.md#14-hedging-hedgingrejectedexception-with-aggregated-errors) for planned improvement.)
+When every attempt fails, the last failure's exception propagates. Only the most recent exception surfaces — earlier attempt exceptions are not aggregated. Aggregated error reporting could be added post-v1.0 as an opt-in flag if it turns out to matter in practice, without breaking the current catch behavior.
 
 ## Typed pipelines only
 
@@ -99,7 +99,7 @@ Hedging requires `Pipeline<TResult>` because it must produce a result of the cor
 
 ## Sync execution
 
-Sync path always runs sequentially regardless of `HedgingDelay` — parallel execution requires async. Each attempt runs to completion (or failure) before the next starts.
+The sync path only supports sequential mode — set `HedgingDelay = Timeout.InfiniteTimeSpan`. Each attempt then runs to completion (or failure) before the next starts. Parallel mode (`TimeSpan.Zero`) and latency mode (any other positive delay) require concurrent execution, so calling `Execute()` with either throws `InvalidOperationException` instead of silently running sequentially — use `ExecuteAsync()` for those modes.
 
 ## Result-based hedging
 

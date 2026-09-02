@@ -316,4 +316,70 @@ public class RateLimiterStrategyTests
             }
         } while (Interlocked.CompareExchange(ref location, value, current) != current);
     }
+
+    // ──────────────────────────────────────────────────────────────────
+    // AttemptAcquire (sync) vs AcquireAsync (async) — queueing behavior differs
+    // ──────────────────────────────────────────────────────────────────
+    //
+    // ExecuteAsync uses AcquireAsync, which will wait in queue up to QueueLimit permits.
+    // Execute (sync) uses AttemptAcquire, which never queues — it rejects immediately if no
+    // permit is free right now, even when QueueLimit would have let AcquireAsync wait.
+
+    [Fact]
+    public async Task Async_WithQueueLimit_WaitsInQueueThenSucceeds()
+    {
+        using var limiter = new ConcurrencyLimiter(new ConcurrencyLimiterOptions
+        {
+            PermitLimit = 1,
+            QueueLimit = 1,
+        });
+
+        var pipeline = Pipeline.Create(b => b.AddRateLimiter(new RateLimiterStrategyOptions
+        {
+            RateLimiter = limiter,
+        }));
+
+        // Hold the only permit so the next acquire must queue.
+        var heldLease = limiter.AttemptAcquire();
+        Assert.True(heldLease.IsAcquired);
+
+        var queuedTask = pipeline.ExecuteAsync(ct => new ValueTask<string>("queued-ok")).AsTask();
+
+        // Give the queued acquire a moment to actually start waiting, then free the permit.
+        await Task.Delay(TimeSpan.FromMilliseconds(50));
+        heldLease.Dispose();
+
+        var result = await queuedTask;
+        Assert.Equal("queued-ok", result);
+    }
+
+    [Fact]
+    public void Sync_WithQueueLimit_StillRejectsImmediately()
+    {
+        using var limiter = new ConcurrencyLimiter(new ConcurrencyLimiterOptions
+        {
+            PermitLimit = 1,
+            QueueLimit = 1, // Would let an async caller wait — AttemptAcquire ignores this.
+        });
+
+        var pipeline = Pipeline.Create(b => b.AddRateLimiter(new RateLimiterStrategyOptions
+        {
+            RateLimiter = limiter,
+        }));
+
+        var heldLease = limiter.AttemptAcquire();
+        Assert.True(heldLease.IsAcquired);
+
+        try
+        {
+            // Sync Execute() uses AttemptAcquire, which never queues, so this rejects
+            // immediately instead of waiting for heldLease to be released.
+            Assert.Throws<RateLimitRejectedException>(() =>
+                pipeline.Execute(ct => "should not reach"));
+        }
+        finally
+        {
+            heldLease.Dispose();
+        }
+    }
 }

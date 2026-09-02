@@ -410,6 +410,59 @@ public class RetryStrategyTests
         Assert.Equal("success", result);
         Assert.Equal(3, callCount);
     }
+
+    // ──────────────────────────────────────────────────────────────────
+    // MaxDelay — global safety cap
+    // ──────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task MaxDelay_CapsComputedDelayFromCustomDelegate()
+    {
+        var fakeTime = new FakeTimeProvider();
+        TimeSpan? capturedDelay = null;
+        Action<RetryAttemptEvent> onRetry = e => capturedDelay = e.RetryDelay;
+
+        var pipeline = Pipeline.Create(b =>
+        {
+            b.TimeProvider = fakeTime;
+            b.AddRetry(new RetryStrategyOptions
+            {
+                MaxRetryAttempts = 1,
+                Delay = RetryDelay.Custom(ctx => TimeSpan.FromHours(1)), // absurdly large
+                MaxDelay = TimeSpan.FromSeconds(5),
+                UseJitter = false,
+                OnRetry = onRetry,
+            });
+        });
+
+        var callCount = 0;
+        var executeTask = pipeline.ExecuteAsync(ct =>
+        {
+            callCount++;
+            return callCount < 2
+                ? throw new InvalidOperationException("fail")
+                : new ValueTask<string>("ok");
+        }).AsTask();
+
+        // Let the strategy reach its (capped) delay wait, then advance the fake clock past it.
+        await Task.Delay(TimeSpan.FromMilliseconds(50));
+        fakeTime.Advance(TimeSpan.FromSeconds(6));
+
+        var result = await executeTask;
+
+        Assert.Equal("ok", result);
+        Assert.Equal(TimeSpan.FromSeconds(5), capturedDelay);
+    }
+
+    [Fact]
+    public void NegativeMaxDelay_ThrowsAtBuildTime()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            Pipeline.Create(b => b.AddRetry(new RetryStrategyOptions
+            {
+                MaxDelay = TimeSpan.FromSeconds(-1),
+            })));
+    }
 }
 
 // Needed for the ShouldHandle test

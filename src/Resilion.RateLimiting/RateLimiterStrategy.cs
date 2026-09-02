@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Threading.RateLimiting;
 
 namespace Resilion.RateLimiting;
@@ -18,6 +19,14 @@ internal sealed class RateLimiterStrategy : Strategy
         Func<ResilienceContext, ValueTask<Outcome<TResult>>> callback,
         ResilienceContext context)
     {
+        using var activity = ResilionTelemetry.ActivitySource.StartActivity("RateLimiter");
+        if (activity is not null)
+        {
+            activity.SetTag("strategy.name", "RateLimiter");
+            activity.SetTag("pipeline.name", context.PipelineName);
+            activity.SetTag("operation.key", context.OperationKey);
+        }
+
         var lease = await _options.RateLimiter!.AcquireAsync(
             permitCount: 1,
             cancellationToken: context.CancellationToken).ConfigureAwait(false);
@@ -26,10 +35,20 @@ internal sealed class RateLimiterStrategy : Strategy
         {
             if (!lease.IsAcquired)
             {
-                return await HandleRejection<TResult>(lease, context).ConfigureAwait(false);
+                var result = await HandleRejection<TResult>(lease, context).ConfigureAwait(false);
+                if (activity is not null)
+                {
+                    activity.SetTag("outcome", "rejected");
+                }
+                return result;
             }
 
-            return await callback(context).ConfigureAwait(context.ContinueOnCapturedContext);
+            var outcome = await callback(context).ConfigureAwait(context.ContinueOnCapturedContext);
+            if (activity is not null)
+            {
+                activity.SetTag("outcome", outcome.IsSuccess ? "success" : "failure");
+            }
+            return outcome;
         }
         finally
         {
@@ -41,15 +60,33 @@ internal sealed class RateLimiterStrategy : Strategy
         Func<ResilienceContext, Outcome<TResult>> callback,
         ResilienceContext context)
     {
+        using var activity = ResilionTelemetry.ActivitySource.StartActivity("RateLimiter");
+        if (activity is not null)
+        {
+            activity.SetTag("strategy.name", "RateLimiter");
+            activity.SetTag("pipeline.name", context.PipelineName);
+            activity.SetTag("operation.key", context.OperationKey);
+        }
+
         // Sync acquire — AttemptAcquire does not wait in a queue.
         using var lease = _options.RateLimiter!.AttemptAcquire(permitCount: 1);
 
         if (!lease.IsAcquired)
         {
-            return HandleRejectionSync<TResult>(lease, context);
+            var result = HandleRejectionSync<TResult>(lease, context);
+            if (activity is not null)
+            {
+                activity.SetTag("outcome", "rejected");
+            }
+            return result;
         }
 
-        return callback(context);
+        var outcome = callback(context);
+        if (activity is not null)
+        {
+            activity.SetTag("outcome", outcome.IsSuccess ? "success" : "failure");
+        }
+        return outcome;
     }
 
     private async ValueTask<Outcome<TResult>> HandleRejection<TResult>(
@@ -58,7 +95,7 @@ internal sealed class RateLimiterStrategy : Strategy
     {
         var retryAfter = GetRetryAfter(lease);
 
-        Resilion.ResilionTelemetry.RateLimiterRejections.Add(1);
+        Resilion.ResilionTelemetry.RateLimiterRejections.Add(1, new(Resilion.ResilionTelemetry.PipelineNameTag, context.PipelineName), new(Resilion.ResilionTelemetry.OperationKeyTag, context.OperationKey));
 
         if (_options.OnRejected is { } handler && handler.HasHandler)
         {
@@ -75,7 +112,7 @@ internal sealed class RateLimiterStrategy : Strategy
     {
         var retryAfter = GetRetryAfter(lease);
 
-        Resilion.ResilionTelemetry.RateLimiterRejections.Add(1);
+        Resilion.ResilionTelemetry.RateLimiterRejections.Add(1, new(Resilion.ResilionTelemetry.PipelineNameTag, context.PipelineName), new(Resilion.ResilionTelemetry.OperationKeyTag, context.OperationKey));
 
         if (_options.OnRejected is { } handler && handler.HasHandler)
         {

@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace Resilion;
 
 /// <summary>
@@ -18,6 +20,14 @@ internal sealed class RetryStrategy : Strategy
         Func<ResilienceContext, ValueTask<Outcome<TResult>>> callback,
         ResilienceContext context)
     {
+        using var activity = ResilionTelemetry.ActivitySource.StartActivity("Retry");
+        if (activity is not null)
+        {
+            activity.SetTag("strategy.name", "Retry");
+            activity.SetTag("pipeline.name", context.PipelineName);
+            activity.SetTag("operation.key", context.OperationKey);
+        }
+
         if (_options.MaxRetryAttempts == 0)
         {
             return await callback(context).ConfigureAwait(context.ContinueOnCapturedContext);
@@ -35,12 +45,20 @@ internal sealed class RetryStrategy : Strategy
             // Success — return immediately.
             if (outcome.IsSuccess)
             {
+                if (activity is not null)
+                {
+                    activity.SetTag("outcome", "success");
+                }
                 return outcome;
             }
 
             // Check if this exception should trigger a retry.
             if (!_options.ShouldHandleException(outcome.Exception!))
             {
+                if (activity is not null)
+                {
+                    activity.SetTag("outcome", "failure");
+                }
                 return outcome;
             }
 
@@ -53,8 +71,12 @@ internal sealed class RetryStrategy : Strategy
             // Compute delay.
             var retryNumber = attempt + 1;
             var delay = _options.Delay.ComputeDelay(retryNumber, _options.UseJitter);
+            if (_options.MaxDelay.HasValue && delay > _options.MaxDelay.Value)
+            {
+                delay = _options.MaxDelay.Value;
+            }
 
-            ResilionTelemetry.RetryAttempts.Add(1);
+            ResilionTelemetry.RetryAttempts.Add(1, new(ResilionTelemetry.PipelineNameTag, context.PipelineName), new(ResilionTelemetry.OperationKeyTag, context.OperationKey));
 
             // Fire OnRetry callback.
             if (_options.OnRetry is { } handler && handler.HasHandler)
@@ -72,6 +94,11 @@ internal sealed class RetryStrategy : Strategy
             }
         }
 
+        if (activity is not null)
+        {
+            activity.SetTag("outcome", "retry_exhausted");
+        }
+
         return outcome;
     }
 
@@ -79,6 +106,14 @@ internal sealed class RetryStrategy : Strategy
         Func<ResilienceContext, Outcome<TResult>> callback,
         ResilienceContext context)
     {
+        using var activity = ResilionTelemetry.ActivitySource.StartActivity("Retry");
+        if (activity is not null)
+        {
+            activity.SetTag("strategy.name", "Retry");
+            activity.SetTag("pipeline.name", context.PipelineName);
+            activity.SetTag("operation.key", context.OperationKey);
+        }
+
         if (_options.MaxRetryAttempts == 0)
         {
             return callback(context);
@@ -94,11 +129,19 @@ internal sealed class RetryStrategy : Strategy
 
             if (outcome.IsSuccess)
             {
+                if (activity is not null)
+                {
+                    activity.SetTag("outcome", "success");
+                }
                 return outcome;
             }
 
             if (!_options.ShouldHandleException(outcome.Exception!))
             {
+                if (activity is not null)
+                {
+                    activity.SetTag("outcome", "failure");
+                }
                 return outcome;
             }
 
@@ -109,8 +152,12 @@ internal sealed class RetryStrategy : Strategy
 
             var retryNumber = attempt + 1;
             var delay = _options.Delay.ComputeDelay(retryNumber, _options.UseJitter);
+            if (_options.MaxDelay.HasValue && delay > _options.MaxDelay.Value)
+            {
+                delay = _options.MaxDelay.Value;
+            }
 
-            ResilionTelemetry.RetryAttempts.Add(1);
+            ResilionTelemetry.RetryAttempts.Add(1, new(ResilionTelemetry.PipelineNameTag, context.PipelineName), new(ResilionTelemetry.OperationKeyTag, context.OperationKey));
 
             if (_options.OnRetry is { } handler && handler.HasHandler)
             {
@@ -123,6 +170,11 @@ internal sealed class RetryStrategy : Strategy
                 context.CancellationToken.WaitHandle.WaitOne(delay);
                 context.CancellationToken.ThrowIfCancellationRequested();
             }
+        }
+
+        if (activity is not null)
+        {
+            activity.SetTag("outcome", "retry_exhausted");
         }
 
         return outcome;
@@ -173,8 +225,12 @@ internal sealed class RetryStrategy<TResult> : Strategy<TResult>
 
             var retryNumber = attempt + 1;
             var delay = _options.Delay.ComputeDelay(retryNumber, _options.UseJitter);
+            if (_options.MaxDelay.HasValue && delay > _options.MaxDelay.Value)
+            {
+                delay = _options.MaxDelay.Value;
+            }
 
-            ResilionTelemetry.RetryAttempts.Add(1);
+            ResilionTelemetry.RetryAttempts.Add(1, new(ResilionTelemetry.PipelineNameTag, context.PipelineName), new(ResilionTelemetry.OperationKeyTag, context.OperationKey));
 
             if (_options.OnRetry is { } handler && handler.HasHandler)
             {
@@ -222,8 +278,12 @@ internal sealed class RetryStrategy<TResult> : Strategy<TResult>
 
             var retryNumber = attempt + 1;
             var delay = _options.Delay.ComputeDelay(retryNumber, _options.UseJitter);
+            if (_options.MaxDelay.HasValue && delay > _options.MaxDelay.Value)
+            {
+                delay = _options.MaxDelay.Value;
+            }
 
-            ResilionTelemetry.RetryAttempts.Add(1);
+            ResilionTelemetry.RetryAttempts.Add(1, new(ResilionTelemetry.PipelineNameTag, context.PipelineName), new(ResilionTelemetry.OperationKeyTag, context.OperationKey));
 
             if (_options.OnRetry is { } handler && handler.HasHandler)
             {

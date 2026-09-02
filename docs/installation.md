@@ -109,7 +109,7 @@ var pipeline = Pipeline.Create(b => b
 
 ## Supported .NET versions
 
-- .NET 9.0+
+- .NET 8.0+
 
 ## License
 

@@ -15,7 +15,7 @@ namespace Resilion;
 /// result-based Retry), use <see cref="Strategy{TResult}"/> instead.
 /// </para>
 /// </remarks>
-public abstract class Strategy : IDisposable
+public abstract class Strategy : IDisposable, IAsyncDisposable
 {
     /// <summary>
     /// Executes the resilience logic around the given callback.
@@ -39,8 +39,18 @@ public abstract class Strategy : IDisposable
         Func<ResilienceContext, Outcome<TResult>> callback,
         ResilienceContext context)
     {
-        // Default: delegate to async path synchronously.
-        // Strategies that support true sync execution should override this method.
+        // Default: delegate to async path synchronously. Strategies that support true sync
+        // execution should override this method. All built-in strategies do; this default only
+        // runs for custom strategies deriving from Strategy that haven't overridden Execute().
+        if (SynchronizationContext.Current is not null)
+        {
+            throw new InvalidOperationException(
+                $"'{GetType().Name}' does not override {nameof(Execute)}() and cannot be used " +
+                "synchronously while a SynchronizationContext is present (WPF, WinForms, legacy " +
+                $"ASP.NET) — blocking here could deadlock. Override {nameof(Execute)}() with a " +
+                $"true synchronous implementation, or call {nameof(ExecuteAsync)}() instead.");
+        }
+
         return ExecuteAsync<TResult>(
             ctx => new ValueTask<Outcome<TResult>>(callback(ctx)),
             context).GetAwaiter().GetResult();
@@ -49,6 +59,16 @@ public abstract class Strategy : IDisposable
     /// <inheritdoc />
     public virtual void Dispose()
     {
+    }
+
+    /// <summary>
+    /// Asynchronously disposes this strategy. The default implementation calls <see cref="Dispose"/>.
+    /// Override this when a strategy holds async-disposable resources.
+    /// </summary>
+    public virtual ValueTask DisposeAsync()
+    {
+        Dispose();
+        return default;
     }
 }
 
@@ -66,7 +86,7 @@ public abstract class Strategy : IDisposable
 /// For strategies that don't need to inspect results (Timeout, RateLimiter), use <see cref="Strategy"/> instead.
 /// </para>
 /// </remarks>
-public abstract class Strategy<TResult> : IDisposable
+public abstract class Strategy<TResult> : IDisposable, IAsyncDisposable
 {
     /// <summary>
     /// Executes the resilience logic around the given callback.
@@ -88,8 +108,18 @@ public abstract class Strategy<TResult> : IDisposable
         Func<ResilienceContext, Outcome<TResult>> callback,
         ResilienceContext context)
     {
-        // Default: delegate to async path synchronously.
-        // Strategies that support true sync execution should override this method.
+        // Default: delegate to async path synchronously. Strategies that support true sync
+        // execution should override this method. All built-in strategies do; this default only
+        // runs for custom strategies deriving from Strategy<TResult> that haven't overridden Execute().
+        if (SynchronizationContext.Current is not null)
+        {
+            throw new InvalidOperationException(
+                $"'{GetType().Name}' does not override {nameof(Execute)}() and cannot be used " +
+                "synchronously while a SynchronizationContext is present (WPF, WinForms, legacy " +
+                $"ASP.NET) — blocking here could deadlock. Override {nameof(Execute)}() with a " +
+                $"true synchronous implementation, or call {nameof(ExecuteAsync)}() instead.");
+        }
+
         return ExecuteAsync(
             ctx => new ValueTask<Outcome<TResult>>(callback(ctx)),
             context).GetAwaiter().GetResult();
@@ -98,5 +128,15 @@ public abstract class Strategy<TResult> : IDisposable
     /// <inheritdoc />
     public virtual void Dispose()
     {
+    }
+
+    /// <summary>
+    /// Asynchronously disposes this strategy. The default implementation calls <see cref="Dispose"/>.
+    /// Override this when a strategy holds async-disposable resources.
+    /// </summary>
+    public virtual ValueTask DisposeAsync()
+    {
+        Dispose();
+        return default;
     }
 }

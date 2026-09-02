@@ -10,17 +10,30 @@ public static class ResilionServiceCollectionExtensions
 {
     /// <summary>
     /// Adds Resilion core services to the service collection, including a shared
-    /// <see cref="ResiliencePipelineRegistry{TKey}"/> with string keys.
+    /// <see cref="ResiliencePipelineRegistry{TKey}"/> with string keys and its read-only
+    /// <see cref="IPipelineProvider{TKey}"/> view.
     /// </summary>
     /// <param name="services">The service collection.</param>
     /// <returns>The service collection for chaining.</returns>
-    public static IServiceCollection AddResilion(this IServiceCollection services)
+    public static IServiceCollection AddResilienceServices(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
         services.TryAddSingleton<ResiliencePipelineRegistry<string>>(sp => BuildRegistry(sp));
+        services.TryAddSingleton<IPipelineProvider<string>>(sp =>
+            sp.GetRequiredService<ResiliencePipelineRegistry<string>>());
         services.TryAddSingleton(ResilienceContextPool.Shared);
         return services;
     }
+
+    /// <summary>
+    /// Adds Resilion core services to the service collection. Obsolete alias for
+    /// <see cref="AddResilienceServices"/> — kept so existing code continues to compile.
+    /// </summary>
+    /// <param name="services">The service collection.</param>
+    /// <returns>The service collection for chaining.</returns>
+    [Obsolete("Use AddResilienceServices() instead. This alias will be removed in a future major version.")]
+    public static IServiceCollection AddResilion(this IServiceCollection services)
+        => services.AddResilienceServices();
 
     /// <summary>
     /// Registers a named resilience pipeline that is created lazily on first access
@@ -50,7 +63,7 @@ public static class ResilionServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(configure);
 
-        services.AddResilion();
+        services.AddResilienceServices();
 
         // Register a post-configuration action that runs when the registry is first resolved.
         var capturedName = name;
@@ -78,7 +91,7 @@ public static class ResilionServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(configure);
 
-        services.AddResilion();
+        services.AddResilienceServices();
 
         services.AddSingleton<IPipelineConfigurator>(
             new TypedPipelineConfigurator<TResult>(name, configure));

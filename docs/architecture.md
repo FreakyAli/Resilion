@@ -100,16 +100,18 @@ A call flows inward through each strategy to the user delegate, then outcomes fl
 
 ### Sync vs async
 
-Both `Execute` and `ExecuteAsync` are provided. The sync path is a true sync implementation — strategies use `Thread.Sleep` / `WaitHandle` for delays, not sync-over-async wrapping. Exception: Hedging sync always runs sequentially (parallel execution requires async).
+Both `Execute` and `ExecuteAsync` are provided. The sync path is a true sync implementation — strategies use `Thread.Sleep` / `WaitHandle` for delays, not sync-over-async wrapping. Exception: Hedging's sync path only supports sequential mode (`HedgingDelay = Timeout.InfiniteTimeSpan`) — parallel/latency modes require concurrent execution, so `Execute()` throws `InvalidOperationException` for those rather than silently degrading to sequential.
 
 ## Performance model
+
+See [benchmarks/results](../benchmarks/results/README.md) for measured numbers against Polly.Core.
 
 ### Happy path allocations
 
 | Strategy | Allocations | Notes |
 |----------|------------|-------|
 | Retry (no retry) | 0 | Predicate check only |
-| Circuit Breaker (Closed) | 0 | Volatile read + Interlocked.Increment |
+| Circuit Breaker (Closed) | 0 | Volatile state read + single lock acquisition to record/read the ratio |
 | Timeout (in time) | 1 CTS + 1 ITimer | CTS poolable via TryReset |
 | Fallback (not triggered) | 0 | Predicate check only |
 | Rate Limiter (permitted) | 1 lease | Often a struct |
@@ -126,7 +128,7 @@ Each `StrategyComponent` in the chain creates a closure `ctx => _next.ExecuteAsy
 ## Thread safety
 
 - **Pipeline** — immutable after construction, safe to share across threads
-- **Circuit Breaker** — state machine uses `System.Threading.Lock` for transitions, `Interlocked` for sliding window counters. Callbacks fire outside lock.
-- **Sliding Window** — internal lock protects bucket rotation and ratio computation
+- **Circuit Breaker** — state machine uses a lock for transitions; failure counting delegates to the Sliding Window. Callbacks fire outside the lock.
+- **Sliding Window** — a single internal lock protects bucket rotation, counter increments, and ratio computation; `RecordAndGetRatio` combines recording and reading under one acquisition for atomicity
 - **ResilienceContextPool** — uses `ConcurrentBag` with approximate size cap
 - **ResilienceContext** — NOT thread-safe. One context per execution, which flows through the strategy chain sequentially. Hedging creates separate contexts per attempt.

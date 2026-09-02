@@ -1,4 +1,5 @@
 using Resilion;
+using Resilion.Samples;
 
 Console.WriteLine("Resilion Samples");
 Console.WriteLine("================");
@@ -192,6 +193,60 @@ var syncResult = syncPipeline.Execute(ct =>
 });
 
 Console.WriteLine($"   Result: {syncResult} (after {syncAttempts} attempts)");
+Console.WriteLine();
+
+// ──────────────────────────────────────────────────────────────────
+// 7. Dependency injection (AddResilienceServices + IPipelineProvider)
+// ──────────────────────────────────────────────────────────────────
+
+Console.WriteLine("7. Dependency Injection");
+Console.WriteLine("────────────────────────");
+await DependencyInjectionSample.RunAsync();
+Console.WriteLine();
+
+// ──────────────────────────────────────────────────────────────────
+// 8. Typed pipeline with result-based retry (HTTP status codes)
+// ──────────────────────────────────────────────────────────────────
+
+Console.WriteLine("8. Typed Retry on HTTP Status Codes");
+Console.WriteLine("────────────────────────────────────");
+await TypedRetrySample.RunAsync();
+Console.WriteLine();
+
+// ──────────────────────────────────────────────────────────────────
+// 9. Rate limiter
+// ──────────────────────────────────────────────────────────────────
+
+Console.WriteLine("9. Rate Limiter");
+Console.WriteLine("───────────────");
+await RateLimiterSample.RunAsync();
+Console.WriteLine();
+
+// ──────────────────────────────────────────────────────────────────
+// 10. Hedging with ActionGenerator (primary + failover endpoint)
+// ──────────────────────────────────────────────────────────────────
+
+Console.WriteLine("10. Hedging with ActionGenerator");
+Console.WriteLine("─────────────────────────────────");
+await HedgingActionGeneratorSample.RunAsync();
+Console.WriteLine();
+
+// ──────────────────────────────────────────────────────────────────
+// 11. BreakDurationGenerator (exponential break backoff)
+// ──────────────────────────────────────────────────────────────────
+
+Console.WriteLine("11. BreakDurationGenerator");
+Console.WriteLine("───────────────────────────");
+await BreakDurationGeneratorSample.RunAsync();
+Console.WriteLine();
+
+// ──────────────────────────────────────────────────────────────────
+// 12. State parameter (avoiding closure allocations)
+// ──────────────────────────────────────────────────────────────────
+
+Console.WriteLine("12. State Parameter");
+Console.WriteLine("────────────────────");
+await StateParameterSample.RunAsync();
 Console.WriteLine();
 
 Console.WriteLine("All samples completed.");

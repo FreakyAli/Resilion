@@ -5,8 +5,10 @@ namespace Resilion.Internal;
 /// Uses a fixed-size ring buffer of time buckets, each covering a fraction of the total window.
 /// </summary>
 /// <remarks>
-/// Thread-safe. All public methods acquire the internal lock. Counter increments on the current
-/// bucket use Interlocked for minimal contention on the hot path (Closed state, call succeeds).
+/// Thread-safe. All public methods acquire a single internal lock for the duration of the call.
+/// <see cref="RecordAndGetRatio"/> combines recording an outcome and reading the failure ratio
+/// under one lock acquisition, so the two operations are atomic with respect to concurrent
+/// callers and bucket rotation.
 /// </remarks>
 internal sealed class SlidingWindow
 {

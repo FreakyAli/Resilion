@@ -428,4 +428,60 @@ public class CircuitBreakerStrategyTests
 
         Assert.Equal("should propagate", ex.Message);
     }
+
+    // ──────────────────────────────────────────────────────────────────
+    // BreakDurationGenerator — dynamic break duration per trip
+    // ──────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task BreakDurationGenerator_ComputesIncreasingDurationPerTrip()
+    {
+        var fakeTime = new FakeTimeProvider();
+        var capturedArgs = new List<BreakDurationGeneratorArgs>();
+
+        var pipeline = Pipeline.Create(b =>
+        {
+            b.TimeProvider = fakeTime;
+            b.AddCircuitBreaker(new CircuitBreakerStrategyOptions
+            {
+                FailureRatioThreshold = 0.5,
+                MinimumThroughput = 2,
+                BreakDuration = TimeSpan.FromSeconds(1),
+                BreakDurationGenerator = args =>
+                {
+                    capturedArgs.Add(args);
+                    return TimeSpan.FromSeconds(args.FailureCount * 2); // 2s, then 4s
+                },
+            });
+        });
+
+        // First trip.
+        for (var i = 0; i < 2; i++)
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                pipeline.ExecuteAsync<int>(ct => throw new InvalidOperationException("fail")).AsTask());
+        }
+
+        var firstReject = await Assert.ThrowsAsync<CircuitBrokenException>(() =>
+            pipeline.ExecuteAsync<int>(ct => new ValueTask<int>(1)).AsTask());
+
+        Assert.Single(capturedArgs);
+        Assert.Equal(1, capturedArgs[0].FailureCount);
+        Assert.Equal(TimeSpan.FromSeconds(1), capturedArgs[0].CurrentBreakDuration);
+        // The generator's 2s result is used, not the static 1s BreakDuration.
+        Assert.True(firstReject.RetryAfter > TimeSpan.FromSeconds(1));
+
+        // Not yet past the generated 2s — still rejecting.
+        fakeTime.Advance(TimeSpan.FromSeconds(1.5));
+        await Assert.ThrowsAsync<CircuitBrokenException>(() =>
+            pipeline.ExecuteAsync<int>(ct => new ValueTask<int>(1)).AsTask());
+
+        // Past 2s total — probe is allowed through and fails, tripping a second time.
+        fakeTime.Advance(TimeSpan.FromSeconds(1));
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            pipeline.ExecuteAsync<int>(ct => throw new InvalidOperationException("fail again")).AsTask());
+
+        Assert.Equal(2, capturedArgs.Count);
+        Assert.Equal(2, capturedArgs[1].FailureCount);
+    }
 }

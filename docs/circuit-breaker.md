@@ -32,6 +32,7 @@ catch (CircuitBrokenException ex)
 | `SamplingDuration` | `TimeSpan` | 30s | Sliding window for tracking |
 | `MinimumThroughput` | `int` | 10 | Min calls before ratio is evaluated |
 | `BreakDuration` | `TimeSpan` | 30s | How long circuit stays open |
+| `BreakDurationGenerator` | `Func<BreakDurationGeneratorArgs, TimeSpan>` | null | Computes the break duration per trip (e.g. exponential backoff on repeated trips); overrides `BreakDuration` when set |
 | `ShouldHandle` | `Func<Exception, bool>` | All except `OperationCanceledException` | What counts as failure |
 | `OnOpened` | `ResilienceEventHandler` | null | Fired on Closed → Open |
 | `OnClosed` | `ResilienceEventHandler` | null | Fired on HalfOpen → Closed |

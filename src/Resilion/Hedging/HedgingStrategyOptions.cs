@@ -1,3 +1,5 @@
+using Resilion.Internal;
+
 namespace Resilion;
 
 /// <summary>
@@ -73,7 +75,7 @@ public sealed record HedgingStrategyOptions<TResult>
             return ShouldHandle(outcome);
         }
 
-        return outcome.Exception is not null and not OperationCanceledException;
+        return OutcomePredicates.DefaultShouldHandle(outcome);
     }
 }
 

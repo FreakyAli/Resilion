@@ -21,6 +21,13 @@ env:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The library targets net8.0 only; running the same net8.0 test binaries under both
+        # the 8.0.x and 9.0.x runtimes catches framework-specific regressions (e.g. runtime
+        # behavior differences the library depends on) that a single-SDK job would miss.
+        dotnet-version: ["8.0.x", "9.0.x"]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -30,7 +37,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 9.0.x
+          dotnet-version: ${{ matrix.dotnet-version }}
 
       - name: Restore dependencies
         run: dotnet restore
@@ -45,7 +52,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: success() || failure()
         with:
-          name: test-results-${{ github.run_id }}
+          name: test-results-${{ matrix.dotnet-version }}-${{ github.run_id }}
           path: TestResults/*.trx
           retention-days: 7
 
@@ -53,8 +60,34 @@ jobs:
         uses: dorny/test-reporter@v1
         if: success() || failure()
         with:
-          name: Unit Test Results
+          name: Unit Test Results (${{ matrix.dotnet-version }})
           path: TestResults/*.trx
           reporter: dotnet-trx
           fail-on-error: false
           token: ${{ secrets.GITHUB_TOKEN }}
+
+  # Verifies the IsAotCompatible=true claim in src/Directory.Build.props actually holds —
+  # an unverified AOT claim is worse than no claim (see future-plans.md). Publishes the
+  # samples project (the most representative consumer surface: DI, typed pipelines, every
+  # built-in strategy) with Native AOT and fails on any trim/AOT analyzer warning.
+  aot-verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Publish samples with Native AOT
+        run: >
+          dotnet publish samples/Resilion.Samples/Resilion.Samples.csproj
+          -c Release -r linux-x64 -p:PublishAot=true --self-contained
+          /warnaserror:IL2026,IL2070,IL2072,IL3050,IL3053
+
+      - name: Run the AOT-published binary
+        run: ./samples/Resilion.Samples/bin/Release/net8.0/linux-x64/publish/Resilion.Samples
