@@ -40,6 +40,12 @@ public sealed class ResilienceContext
     public string? OperationKey { get; set; }
 
     /// <summary>
+    /// Gets or sets the name of the pipeline executing this operation, used for telemetry correlation.
+    /// Set automatically by <see cref="Pipeline"/> during execution.
+    /// </summary>
+    internal string? PipelineName { get; set; }
+
+    /// <summary>
     /// Gets or sets a value indicating whether async continuations should run on the captured
     /// synchronization context. Defaults to <c>false</c> (library-friendly behavior).
     /// </summary>
@@ -67,6 +73,7 @@ public sealed class ResilienceContext
     {
         CancellationToken = default;
         OperationKey = null;
+        PipelineName = null;
         ContinueOnCapturedContext = false;
         IsSynchronous = false;
         Properties.Clear();

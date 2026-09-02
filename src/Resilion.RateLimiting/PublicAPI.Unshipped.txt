@@ -1,0 +1,2 @@
+# New public APIs for Resilion.RateLimiting (yet to ship).
+# Entries here should be moved to PublicAPI.Shipped.txt upon release.

@@ -197,9 +197,9 @@ internal sealed class CircuitBreakerStateMachine
             return;
         }
 
-        ResilionTelemetry.CircuitBreakerStateChanges.Add(1);
-
         var e = evt.Value;
+        ResilionTelemetry.CircuitBreakerStateChanges.Add(1, new(ResilionTelemetry.PipelineNameTag, e.Context.PipelineName), new(ResilionTelemetry.OperationKeyTag, e.Context.OperationKey));
+
         switch (e.CurrentState)
         {
             case CircuitState.Open:
@@ -236,9 +236,9 @@ internal sealed class CircuitBreakerStateMachine
             return;
         }
 
-        ResilionTelemetry.CircuitBreakerStateChanges.Add(1);
-
         var e = evt.Value;
+        ResilionTelemetry.CircuitBreakerStateChanges.Add(1, new(ResilionTelemetry.PipelineNameTag, e.Context.PipelineName), new(ResilionTelemetry.OperationKeyTag, e.Context.OperationKey));
+
         switch (e.CurrentState)
         {
             case CircuitState.Open:

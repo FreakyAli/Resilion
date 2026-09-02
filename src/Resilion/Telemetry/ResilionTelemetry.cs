@@ -21,6 +21,16 @@ public static class ResilionTelemetry
     internal static readonly Meter Meter = new(MeterName);
     internal static readonly ActivitySource ActivitySource = new(ActivitySourceName);
 
+    /// <summary>
+    /// Tag key for the pipeline name in telemetry events.
+    /// </summary>
+    public const string PipelineNameTag = "pipeline.name";
+
+    /// <summary>
+    /// Tag key for the operation key in telemetry events.
+    /// </summary>
+    public const string OperationKeyTag = "operation.key";
+
     // Pipeline-level execution count and duration instruments are planned for a future
     // telemetry-wrapping component. They are intentionally omitted here rather than declared
     // unused — the per-strategy counters below are the only instruments this meter emits today.

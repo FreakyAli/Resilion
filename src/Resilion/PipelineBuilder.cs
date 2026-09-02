@@ -167,7 +167,7 @@ public sealed class PipelineBuilder : PipelineBuilderBase
             component = _componentFactories[i](component);
         }
 
-        return new Pipeline(component);
+        return new Pipeline(component, name: Name);
     }
 }
 
@@ -290,7 +290,7 @@ public sealed class PipelineBuilder<TResult> : PipelineBuilderBase
             component = _componentFactories[i](component);
         }
 
-        return new Pipeline<TResult>(component);
+        return new Pipeline<TResult>(component, name: Name);
     }
 }
 

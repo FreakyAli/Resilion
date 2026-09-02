@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace Resilion;
 
 /// <summary>
@@ -19,10 +21,23 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
         Func<ResilienceContext, ValueTask<Outcome<TResult>>> callback,
         ResilienceContext context)
     {
+        using var activity = ResilionTelemetry.ActivitySource.StartActivity("Hedging");
+        if (activity is not null)
+        {
+            activity.SetTag("strategy.name", "Hedging");
+            activity.SetTag("pipeline.name", context.PipelineName);
+            activity.SetTag("operation.key", context.OperationKey);
+        }
+
         if (_options.MaxHedgedAttempts == 1)
         {
             // No hedging — just execute the primary.
-            return await callback(context).ConfigureAwait(context.ContinueOnCapturedContext);
+            var result = await callback(context).ConfigureAwait(context.ContinueOnCapturedContext);
+            if (activity is not null)
+            {
+                activity.SetTag("outcome", result.IsSuccess ? "success" : "failure");
+            }
+            return result;
         }
 
         var userToken = context.CancellationToken;
@@ -74,7 +89,7 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
                 }
                 // Parallel mode (delay == 0): launch immediately, no waiting.
 
-                ResilionTelemetry.HedgingAttempts.Add(1);
+                ResilionTelemetry.HedgingAttempts.Add(1, new(ResilionTelemetry.PipelineNameTag, context.PipelineName), new(ResilionTelemetry.OperationKeyTag, context.OperationKey));
 
                 // Fire OnHedging event.
                 if (_options.OnHedging is { } handler && handler.HasHandler)
@@ -88,7 +103,12 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
             }
 
             // All attempts launched. Wait for the first success or all to fail.
-            return await WaitForBestOutcome(attempts, userToken).ConfigureAwait(false);
+            var outcome = await WaitForBestOutcome(attempts, userToken).ConfigureAwait(false);
+            if (activity is not null)
+            {
+                activity.SetTag("outcome", outcome.IsSuccess ? "success" : "hedging_exhausted");
+            }
+            return outcome;
         }
         finally
         {

@@ -53,6 +53,71 @@ detail to serve as a starting point for implementation.
 
 ## P1 — Pre-v1.0 or Shortly After
 
+### ✅ 49. Telemetry Counters Carry No Dimensions/Tags — IMPLEMENTED
+
+**Status:** Complete  
+**What was done:**
+1. Added `pipeline.name` and `operation.key` tag constants to `ResilionTelemetry`
+2. Extended `ResilienceContext` with `PipelineName` property
+3. Modified `Pipeline` and `Pipeline<TResult>` to store and pass pipeline name through context
+4. Updated `PipelineBuilder.Build()` to pass name to Pipeline constructor
+5. Updated `ResiliencePipelineRegistry` to set builder.Name from the pipeline key
+6. Updated all counter.Add() calls in 6 strategy files to include tags:
+   - RetryStrategy.cs (4 locations)
+   - CircuitBreakerStateMachine.cs (2 locations)
+   - TimeoutStrategy.cs (2 locations)
+   - FallbackStrategy.cs (2 locations)
+   - HedgingStrategy.cs (1 location)
+   - RateLimiterStrategy.cs (2 locations)
+
+**Files modified:** 11 core files + bug fixes  
+**Verification:** All counters now emit with pipeline.name and operation.key tags
+
+---
+
+### ✅ 50. ActivitySource Is Declared But Never Used — IMPLEMENTED
+
+**Status:** Complete  
+**What was done:**
+1. Added `using System.Diagnostics` to 6 strategy files
+2. Wrapped strategy execution in `ActivitySource.StartActivity()` calls
+3. Set tags for strategy name, pipeline name, and operation key on each activity
+4. Tagged outcomes with strategy-specific values (success, failure, timeout, rejected, etc.)
+5. Implemented spans in:
+   - RetryStrategy (both async and sync)
+   - TimeoutStrategy (both async and sync)
+   - FallbackStrategy (both async and sync)
+   - HedgingStrategy (async path)
+   - CircuitBreakerStrategy (both async and sync)
+   - RateLimiterStrategy (both async and sync)
+
+**Files modified:** 6 strategy files  
+**Verification:** Spans now emitted with distributed tracing support enabled
+
+---
+
+### ✅ 51. No Public API Surface Tracking — IMPLEMENTED
+
+**Status:** Complete  
+**What was done:**
+1. Added `Microsoft.CodeAnalysis.PublicApiAnalyzers` (v3.3.4) to `src/Directory.Build.props`
+2. Created PublicAPI.Shipped.txt and PublicAPI.Unshipped.txt files for all 3 public packages:
+   - Resilion/PublicAPI.Shipped.txt
+   - Resilion/PublicAPI.Unshipped.txt
+   - Resilion.Extensions/PublicAPI.Shipped.txt
+   - Resilion.Extensions/PublicAPI.Unshipped.txt
+   - Resilion.RateLimiting/PublicAPI.Shipped.txt
+   - Resilion.RateLimiting/PublicAPI.Unshipped.txt
+3. Analyzer now enforces that all public APIs must be explicitly tracked
+4. CI builds will fail if public surface changes without updating the .Unshipped.txt files
+
+**Files modified:** 1 (Directory.Build.props) + 6 new API tracking files  
+**Verification:** Build succeeds, analyzer correctly identifies undocumented public APIs
+
+---
+
+## P1 — Pre-v1.0 or Shortly After
+
 ### 39. Resilion.Http — HttpClient Integration
 
 **Type:** Feature — Critical for Adoption

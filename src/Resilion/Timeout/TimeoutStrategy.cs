@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace Resilion;
 
 /// <summary>
@@ -18,10 +20,22 @@ internal sealed class TimeoutStrategy : Strategy
         Func<ResilienceContext, ValueTask<Outcome<TResult>>> callback,
         ResilienceContext context)
     {
+        using var activity = ResilionTelemetry.ActivitySource.StartActivity("Timeout");
+        if (activity is not null)
+        {
+            activity.SetTag("strategy.name", "Timeout");
+            activity.SetTag("pipeline.name", context.PipelineName);
+            activity.SetTag("operation.key", context.OperationKey);
+        }
+
         var timeout = ResolveTimeout(context);
 
         if (timeout == System.Threading.Timeout.InfiniteTimeSpan)
         {
+            if (activity is not null)
+            {
+                activity.SetTag("outcome", "no_timeout");
+            }
             return await callback(context).ConfigureAwait(context.ContinueOnCapturedContext);
         }
 
@@ -61,15 +75,29 @@ internal sealed class TimeoutStrategy : Strategy
                     && WasCancelledByTimeout(linkedCts, previousToken))
                 {
                     var elapsed = _timeProvider.GetElapsedTime(startTimestamp);
-                    return await HandleTimeout<TResult>(context, timeout, elapsed, oce).ConfigureAwait(false);
+                    var result = await HandleTimeout<TResult>(context, timeout, elapsed, oce).ConfigureAwait(false);
+                    if (activity is not null)
+                    {
+                        activity.SetTag("outcome", "timeout");
+                    }
+                    return result;
                 }
 
+                if (activity is not null)
+                {
+                    activity.SetTag("outcome", outcome.IsSuccess ? "success" : "failure");
+                }
                 return outcome;
             }
             catch (OperationCanceledException oce) when (WasCancelledByTimeout(linkedCts, previousToken))
             {
                 var elapsed = _timeProvider.GetElapsedTime(startTimestamp);
-                return await HandleTimeout<TResult>(context, timeout, elapsed, oce).ConfigureAwait(false);
+                var result = await HandleTimeout<TResult>(context, timeout, elapsed, oce).ConfigureAwait(false);
+                if (activity is not null)
+                {
+                    activity.SetTag("outcome", "timeout");
+                }
+                return result;
             }
         }
         finally
@@ -89,10 +117,22 @@ internal sealed class TimeoutStrategy : Strategy
         Func<ResilienceContext, Outcome<TResult>> callback,
         ResilienceContext context)
     {
+        using var activity = ResilionTelemetry.ActivitySource.StartActivity("Timeout");
+        if (activity is not null)
+        {
+            activity.SetTag("strategy.name", "Timeout");
+            activity.SetTag("pipeline.name", context.PipelineName);
+            activity.SetTag("operation.key", context.OperationKey);
+        }
+
         var timeout = ResolveTimeout(context);
 
         if (timeout == System.Threading.Timeout.InfiniteTimeSpan)
         {
+            if (activity is not null)
+            {
+                activity.SetTag("outcome", "no_timeout");
+            }
             return callback(context);
         }
 
@@ -130,16 +170,28 @@ internal sealed class TimeoutStrategy : Strategy
             {
                 var elapsed = _timeProvider.GetElapsedTime(startTimestamp);
                 HandleTimeoutSync(context, timeout, elapsed);
+                if (activity is not null)
+                {
+                    activity.SetTag("outcome", "timeout");
+                }
                 return Outcome<TResult>.FromException(
                     new TimeoutRejectedException(timeout, elapsed, oce));
             }
 
+            if (activity is not null)
+            {
+                activity.SetTag("outcome", outcome.IsSuccess ? "success" : "failure");
+            }
             return outcome;
         }
         catch (OperationCanceledException oce) when (WasCancelledByTimeout(linkedCts, previousToken))
         {
             var elapsed = _timeProvider.GetElapsedTime(startTimestamp);
             HandleTimeoutSync(context, timeout, elapsed);
+            if (activity is not null)
+            {
+                activity.SetTag("outcome", "timeout");
+            }
             return Outcome<TResult>.FromException(
                 new TimeoutRejectedException(timeout, elapsed, oce));
         }
@@ -182,7 +234,7 @@ internal sealed class TimeoutStrategy : Strategy
         TimeSpan elapsed,
         Exception originalException)
     {
-        ResilionTelemetry.TimeoutExpirations.Add(1);
+        ResilionTelemetry.TimeoutExpirations.Add(1, new(ResilionTelemetry.PipelineNameTag, context.PipelineName), new(ResilionTelemetry.OperationKeyTag, context.OperationKey));
 
         if (_options.OnTimeout is { } handler && handler.HasHandler)
         {
@@ -198,7 +250,7 @@ internal sealed class TimeoutStrategy : Strategy
         TimeSpan timeout,
         TimeSpan elapsed)
     {
-        ResilionTelemetry.TimeoutExpirations.Add(1);
+        ResilionTelemetry.TimeoutExpirations.Add(1, new(ResilionTelemetry.PipelineNameTag, context.PipelineName), new(ResilionTelemetry.OperationKeyTag, context.OperationKey));
 
         if (_options.OnTimeout is { } handler && handler.HasHandler)
         {

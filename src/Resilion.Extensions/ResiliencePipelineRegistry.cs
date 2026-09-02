@@ -64,7 +64,7 @@ public sealed class ResiliencePipelineRegistry<TKey> : IPipelineProvider<TKey>, 
 
         var lazy = _pipelines.GetOrAdd(key, _ => new Lazy<Pipeline>(() =>
         {
-            var builder = new PipelineBuilder();
+            var builder = new PipelineBuilder { Name = key?.ToString() };
             factory(builder);
             return builder.Build();
         }));
@@ -92,7 +92,7 @@ public sealed class ResiliencePipelineRegistry<TKey> : IPipelineProvider<TKey>, 
         var lazy = _typedPipelines.GetOrAdd(compositeKey, _ => new Lazy<object>(() =>
         {
             var configure = (Action<PipelineBuilder<TResult>>)factory;
-            var builder = new PipelineBuilder<TResult>();
+            var builder = new PipelineBuilder<TResult> { Name = key?.ToString() };
             configure(builder);
             return (object)builder.Build();
         }));

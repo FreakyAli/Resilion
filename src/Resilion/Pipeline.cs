@@ -21,11 +21,13 @@ public sealed class Pipeline : IDisposable, IAsyncDisposable
 {
     private readonly PipelineComponent _component;
     private readonly ResilienceContextPool _pool;
+    private readonly string? _name;
 
-    internal Pipeline(PipelineComponent component, ResilienceContextPool? pool = null)
+    internal Pipeline(PipelineComponent component, ResilienceContextPool? pool = null, string? name = null)
     {
         _component = component;
         _pool = pool ?? ResilienceContextPool.Shared;
+        _name = name;
     }
 
     /// <summary>
@@ -38,6 +40,11 @@ public sealed class Pipeline : IDisposable, IAsyncDisposable
     /// Gets the list of internal components for pipeline composition via <c>AddPipeline</c>.
     /// </summary>
     internal PipelineComponent Component => _component;
+
+    /// <summary>
+    /// Gets the optional name of this pipeline, used in telemetry and diagnostics.
+    /// </summary>
+    internal string? Name => _name;
 
     /// <summary>
     /// Creates a pipeline by configuring strategies on a builder.
@@ -88,6 +95,9 @@ public sealed class Pipeline : IDisposable, IAsyncDisposable
         var context = _pool.Rent(cancellationToken);
         try
         {
+            // Set pipeline name in context for telemetry correlation
+            context.PipelineName = _name;
+
             var outcome = await _component.ExecuteAsync<TResult>(
                 async ctx =>
                 {
@@ -142,6 +152,9 @@ public sealed class Pipeline : IDisposable, IAsyncDisposable
         var context = _pool.Rent(cancellationToken);
         try
         {
+            // Set pipeline name in context for telemetry correlation
+            context.PipelineName = _name;
+
             var outcome = await _component.ExecuteAsync<VoidResult>(
                 async ctx =>
                 {
@@ -209,6 +222,8 @@ public sealed class Pipeline : IDisposable, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(action);
         var context = _pool.Rent(cancellationToken);
         context.IsSynchronous = true;
+        // Set pipeline name in context for telemetry correlation
+        context.PipelineName = _name;
         try
         {
             var outcome = _component.Execute<TResult>(
