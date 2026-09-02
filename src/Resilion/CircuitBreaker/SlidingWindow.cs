@@ -42,7 +42,7 @@ internal sealed class SlidingWindow
         lock (_lock)
         {
             AdvanceWindow();
-            Interlocked.Increment(ref _buckets[_currentBucketIndex].Successes);
+            _buckets[_currentBucketIndex].Successes++;
         }
     }
 
@@ -54,7 +54,51 @@ internal sealed class SlidingWindow
         lock (_lock)
         {
             AdvanceWindow();
-            Interlocked.Increment(ref _buckets[_currentBucketIndex].Failures);
+            _buckets[_currentBucketIndex].Failures++;
+        }
+    }
+
+    /// <summary>
+    /// Records an outcome and gets the current failure ratio and total throughput across all active buckets.
+    /// Combines both operations under a single lock acquisition for efficiency.
+    /// </summary>
+    /// <param name="isFailure"><c>true</c> to record a failure; <c>false</c> to record success.</param>
+    /// <param name="totalCount">The total number of executions in the window.</param>
+    /// <returns>The failure ratio clamped to [0.0, 1.0], or 0.0 if there are no executions.</returns>
+    internal double RecordAndGetRatio(bool isFailure, out int totalCount)
+    {
+        lock (_lock)
+        {
+            AdvanceWindow();
+
+            // Record the outcome
+            if (isFailure)
+            {
+                _buckets[_currentBucketIndex].Failures++;
+            }
+            else
+            {
+                _buckets[_currentBucketIndex].Successes++;
+            }
+
+            // Get the ratio
+            var successes = 0;
+            var failures = 0;
+
+            for (var i = 0; i < BucketCount; i++)
+            {
+                successes += _buckets[i].Successes;
+                failures += _buckets[i].Failures;
+            }
+
+            totalCount = successes + failures;
+            if (totalCount == 0)
+            {
+                return 0.0;
+            }
+
+            var ratio = (double)failures / totalCount;
+            return Math.Clamp(ratio, 0.0, 1.0);
         }
     }
 

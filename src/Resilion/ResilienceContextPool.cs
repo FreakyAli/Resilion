@@ -19,6 +19,9 @@ public sealed class ResilienceContextPool
     // 256 is generous — most applications use far fewer concurrent pipeline executions.
     private const int MaxPoolSize = 256;
 
+    // Tracks pool count with Interlocked to avoid O(n) ConcurrentBag.Count enumeration.
+    private int _count;
+
     /// <summary>
     /// Gets the shared default pool instance. Use this unless you have a specific reason
     /// to create a separate pool.
@@ -36,6 +39,10 @@ public sealed class ResilienceContextPool
         {
             context = new ResilienceContext();
         }
+        else
+        {
+            Interlocked.Decrement(ref _count);
+        }
 
         context.CancellationToken = cancellationToken;
         return context;
@@ -51,10 +58,15 @@ public sealed class ResilienceContextPool
         ArgumentNullException.ThrowIfNull(context);
         context.Reset();
 
-        // Don't let the pool grow without bound.
-        if (_pool.Count < MaxPoolSize)
+        // Don't let the pool grow without bound. Use Interlocked counter to avoid O(n) ConcurrentBag.Count.
+        if (Interlocked.Increment(ref _count) <= MaxPoolSize)
         {
             _pool.Add(context);
+        }
+        else
+        {
+            // Pool is full; discard this context instead of adding it.
+            Interlocked.Decrement(ref _count);
         }
     }
 }

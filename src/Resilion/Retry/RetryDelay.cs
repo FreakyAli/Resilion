@@ -102,6 +102,14 @@ public abstract record RetryDelay
             var baseMs = BaseDelay.TotalMilliseconds;
             var maxMs = MaxDelay?.TotalMilliseconds ?? double.MaxValue;
             var delayMs = Math.Min(baseMs * attemptNumber, maxMs);
+
+            // Guard against overflow when jitter multiplier (up to 1.25x) is applied.
+            // Match the pattern in ExponentialDelay to handle edge cases consistently.
+            if (double.IsInfinity(delayMs) || double.IsNaN(delayMs) || delayMs > TimeSpan.MaxValue.TotalMilliseconds)
+            {
+                delayMs = TimeSpan.MaxValue.TotalMilliseconds;
+            }
+
             var delay = TimeSpan.FromMilliseconds(delayMs);
             return useJitter ? ApplyJitter(delay, MaxDelay) : delay;
         }

@@ -162,16 +162,8 @@ internal sealed class CircuitBreakerStrategy : Strategy
         switch (currentState)
         {
             case CircuitState.Closed:
-                if (isFailure)
-                {
-                    _window.RecordFailure();
-                }
-                else
-                {
-                    _window.RecordSuccess();
-                }
-
-                var failureRatio = _window.GetFailureRatio(out var totalCount);
+                // Record outcome and get ratio under single lock for efficiency
+                var failureRatio = _window.RecordAndGetRatio(isFailure, out var totalCount);
                 if (failureRatio >= _options.FailureRatioThreshold
                     && totalCount >= _options.MinimumThroughput)
                 {

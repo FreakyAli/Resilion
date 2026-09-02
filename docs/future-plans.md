@@ -21,12 +21,6 @@ Features, improvements, and known tradeoffs under consideration for future versi
 
 | # | Item | Priority | Type | Impact | Effort | Notes |
 |---|------|----------|------|--------|--------|-------|
-| 19 | **Hedging sync path shares context across attempts** | **P1** | Fix | Medium | Low | Sync `Execute` reuses same ResilienceContext for all sequential attempts — inner strategies see stale Properties |
-| 20 | Hedging `ResolveAction` missing `Task.Run` wrapper | P1 | Fix | Medium | Low | Sync path deadlock risk when ActionGenerator returns async action |
-| 22 | Hedging latency-mode: Double WhenAny + stale task | P2 | Fix | Medium | Medium | Completed task stays in list, second WhenAny may return wrong task, wastes cycles |
-| 23 | Interlocked.Increment under lock in SlidingWindow | P2 | Fix | Low | Low | Wasted memory barrier — plain `++` under lock is correct and cheaper |
-| 24 | Double lock acquisition per CB Closed-state call | P2 | Fix | Medium | Low | RecordSuccess + GetFailureRatio each acquire SlidingWindow lock separately |
-| 25 | ConcurrentBag.Count in pool Return | P2 | Fix | Medium | Low | `Count` enumerates all thread-local lists — use Interlocked counter |
 | 26 | CB typed/non-generic strategy duplication (~200 lines) | P2 | Improvement | Medium | Medium | Extract shared state machine class |
 | 27 | Retry typed/non-generic strategy duplication (~100 lines) | P2 | Improvement | Medium | Medium | Extract shared retry loop |
 | 28 | PipelineBuilder typed/non-generic duplication (~80 lines) | P2 | Improvement | Medium | Medium | Extract shared base class |
@@ -39,39 +33,6 @@ Features, improvements, and known tradeoffs under consideration for future versi
 | 12 | Hedging: HedgingDelayGenerator | P3 | Feature | Low | Low | Dynamic delay per attempt |
 | 14 | Hedging: HedgingRejectedException with aggregated errors | P3 | Improvement | Low | Low | Currently dead code — never thrown |
 | 30 | FallbackAction/ResilienceEventHandler Task.Run missing CancellationToken | P3 | Fix | Low | Low | Sync-over-async wrappers can't be interrupted by cancellation |
-| 31 | Duplicate XML doc on ResilienceProperties.Clear | P3 | Fix | Low | Low | Copy-paste leftover — orphaned summary block |
-
-> **Completed (removed from backlog):** Solution structure, .editorconfig, global.json, CI workflows, Outcome\<T\>, ResilienceContext pooling, Strategy base types, Pipeline/PipelineBuilder, ResilienceEventHandler union struct, Timeout strategy, Retry strategy (with RetryDelay discriminated union), Circuit Breaker (sliding window, state machine, thread safety), Fallback (with FallbackAction implicit conversions), code review and fixes for 13 issues, Rate Limiter strategy (wrapping System.Threading.RateLimiting), Hedging strategy (parallel/latency/sequential modes, per-attempt CTS, cleanup-on-cancel), Pipeline ordering validation, Telemetry wired into all strategies, Docs (15 files), README, Samples, Benchmarks vs Polly, #6 Pipeline ordering validation, #7 Benchmarks, #8 README and docs, #13 Hedging Properties propagation (CopyFrom added), #15 DI configurators, #16 CB deadlock, #17 ResilienceProperties type safety, #32 Timeout OCE catch, #33 Timeout timer callback crash, #18 ManualControl initialization, #21 Registry race, #34 Hedging stale task.
-
----
-
-## P1 — Do First
-
-### 19. Hedging Sync Path Shares Context Across Attempts
-
-**Type:** Fix — Correctness
-
-**Why**
-
-Sync `Execute` in `HedgingStrategy` passes the same `ResilienceContext` to all sequential attempts. Any inner strategy that writes to `context.Properties` during attempt N leaves stale state visible to attempt N+1. The async path correctly creates a fresh per-attempt context.
-
-**Fix:** Create a per-attempt context copy in the sync path, matching the async path's `ResilienceContextPool.Shared.Rent(ct)` + `Properties.CopyFrom()`.
-
-**Location:** [HedgingStrategy.cs](../src/Resilion/Hedging/HedgingStrategy.cs) — `Execute`, line ~119
-
----
-
-### 20. Hedging ResolveAction Missing Task.Run Wrapper
-
-**Type:** Fix — Deadlock risk
-
-**Why**
-
-Sync `ResolveAction` wraps a custom `ActionGenerator`'s async result with `.GetAwaiter().GetResult()` directly, without `Task.Run`. Every other sync-over-async site in the codebase uses `Task.Run` to escape the SynchronizationContext.
-
-**Fix:** Match the pattern: `Task.Run(() => customAction(ctx.CancellationToken).AsTask()).GetAwaiter().GetResult()`.
-
-**Location:** [HedgingStrategy.cs](../src/Resilion/Hedging/HedgingStrategy.cs) — `ResolveAction`, line ~241
 
 ---
 
@@ -131,62 +92,6 @@ In a pipeline with 3+ hedged attempts where the first wins quickly, the losing t
 Implement a custom `FirstCompletedAsync` that uses `TaskCompletionSource` + per-task continuations that deregister themselves on completion. Or use `WaitAsync` chaining.
 
 **Impact:** Medium. Only affects memory under hedging with many concurrent attempts. The cleanup in `finally` (awaiting all tasks) limits the leak duration.
-
----
-
-### 22. Hedging Latency-Mode Double WhenAny + Stale Task
-
-**Type:** Fix — Correctness (minor)
-
-**Why**
-
-In latency mode, when an attempt completes before the delay, `Task.WhenAny(attempts)` is called twice (once nested, once after). The second call may return a different task. Also, the completed/failed task stays in `attempts`, so `WaitForBestOutcome` re-evaluates it, wasting a cycle and potentially setting `lastFailure` to the wrong attempt.
-
-**Fix:** Store the result of the first `WhenAny`, remove completed tasks from the list before launching the next attempt.
-
-**Location:** [HedgingStrategy.cs](../src/Resilion/Hedging/HedgingStrategy.cs) — `ExecuteAsync`, latency mode block
-
----
-
-### 23. Interlocked.Increment Under Lock in SlidingWindow
-
-**Type:** Fix — Efficiency
-
-**Why**
-
-`RecordSuccess()` and `RecordFailure()` acquire `_lock` then use `Interlocked.Increment`. Since the lock is held, `Interlocked` adds a full memory barrier for zero benefit. Plain `++` is correct and cheaper.
-
-**Fix:** Replace `Interlocked.Increment(ref _buckets[_currentBucketIndex].Successes)` with `_buckets[_currentBucketIndex].Successes++`.
-
-**Location:** [SlidingWindow.cs](../src/Resilion/CircuitBreaker/SlidingWindow.cs) — `RecordSuccess`, `RecordFailure`
-
----
-
-### 24. Double Lock Acquisition Per CB Closed-State Call
-
-**Type:** Fix — Efficiency
-
-**Why**
-
-In Circuit Breaker's Closed path, `RecordAndTransition` calls `_window.RecordFailure()` then `_window.GetFailureRatio()`. Each acquires `SlidingWindow._lock` independently. Both also run `AdvanceWindow()`. This doubles lock contention and duplicates window-advancement.
-
-**Fix:** Add `RecordAndGetRatio(bool isFailure, out int totalCount)` to SlidingWindow that does record + ratio under one lock acquisition.
-
-**Location:** [CircuitBreakerStrategy.cs](../src/Resilion/CircuitBreaker/CircuitBreakerStrategy.cs), [SlidingWindow.cs](../src/Resilion/CircuitBreaker/SlidingWindow.cs)
-
----
-
-### 25. ConcurrentBag.Count in Pool Return
-
-**Type:** Fix — Efficiency
-
-**Why**
-
-`ResilienceContextPool.Return` checks `_pool.Count < MaxPoolSize` before adding. `ConcurrentBag.Count` is O(n), acquiring locks on all thread-local lists. With many threads, this serializes the return path.
-
-**Fix:** Track count with `Interlocked.Increment`/`Decrement` on an `int _count` field instead.
-
-**Location:** [ResilienceContextPool.cs](../src/Resilion/ResilienceContextPool.cs) — `Return`
 
 ---
 
@@ -291,20 +196,6 @@ The first option changes behavior for users who `catch (InvalidOperationExceptio
 Both `FallbackAction<T>.Execute` and `ResilienceEventHandler<T>.Invoke` call `Task.Run(() => ...).GetAwaiter().GetResult()` for sync-over-async without passing `CancellationToken` to `Task.Run`. The blocking call can't be interrupted by cancellation.
 
 **Impact:** Low. Only affects sync path with async handlers/factories, and the underlying async operation would need to observe its own token anyway.
-
----
-
-### 31. Duplicate XML Doc on ResilienceProperties.Clear
-
-**Type:** Fix — Trivial
-
-**Why**
-
-Two consecutive identical `<summary>Removes all properties.</summary>` blocks before `Clear()`. Copy-paste leftover.
-
-**Location:** [ResilienceProperties.cs](../src/Resilion/ResilienceProperties.cs)
-
----
 
 ---
 

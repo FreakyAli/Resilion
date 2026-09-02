@@ -51,12 +51,16 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
                 {
                     // Latency mode: wait for the delay, but also check if any attempt completes early.
                     var delayTask = Task.Delay(_options.HedgingDelay, _timeProvider, userToken);
-                    var winner = await Task.WhenAny(Task.WhenAny(attempts), delayTask).ConfigureAwait(false);
+                    var whenAnyTask = Task.WhenAny(attempts);
+                    var winner = await Task.WhenAny(whenAnyTask, delayTask).ConfigureAwait(false);
 
                     if (winner != delayTask)
                     {
-                        // An attempt completed before the delay. Check if it succeeded.
-                        var completedTask = await Task.WhenAny(attempts).ConfigureAwait(false);
+                        // An attempt completed before the delay. The whenAnyTask has completed,
+                        // revealing the first completed task from attempts. Await it to unwrap
+                        // without calling WhenAny again (which would risk returning a different
+                        // task if multiple completed between our WhenAny call and the second one).
+                        var completedTask = await whenAnyTask.ConfigureAwait(false);
                         var completed = await completedTask.ConfigureAwait(false);
                         if (!_options.ShouldHandleOutcome(completed))
                         {
@@ -145,7 +149,21 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
             context.CancellationToken.ThrowIfCancellationRequested();
 
             var action = ResolveAction(attemptIndex, callback, context);
-            lastOutcome = action(context);
+
+            // Create per-attempt context copy to avoid stale state from previous attempts.
+            // Matches async path behavior (ResilienceContextPool.Shared.Rent + CopyFrom).
+            var attemptContext = ResilienceContextPool.Shared.Rent(context.CancellationToken);
+            attemptContext.OperationKey = context.OperationKey;
+            attemptContext.ContinueOnCapturedContext = context.ContinueOnCapturedContext;
+            attemptContext.Properties.CopyFrom(context.Properties);
+            try
+            {
+                lastOutcome = action(attemptContext);
+            }
+            finally
+            {
+                ResilienceContextPool.Shared.Return(attemptContext);
+            }
 
             if (!_options.ShouldHandleOutcome(lastOutcome))
             {
@@ -252,7 +270,13 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
                 {
                     try
                     {
-                        var result = customAction(ctx.CancellationToken).GetAwaiter().GetResult();
+                        // Wrap async call with Task.Run to escape SynchronizationContext,
+                        // preventing deadlock when ActionGenerator returns async action.
+                        var result = Task.Run(
+                            () => customAction(ctx.CancellationToken).AsTask(),
+                            ctx.CancellationToken)
+                            .GetAwaiter()
+                            .GetResult();
                         return Outcome<TResult>.FromResult(result);
                     }
                     catch (Exception ex)
