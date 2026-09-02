@@ -1,3 +1,5 @@
+using Resilion.Internal;
+
 namespace Resilion;
 
 /// <summary>
@@ -25,9 +27,17 @@ public sealed record CircuitBreakerStrategyOptions
 
     /// <summary>
     /// Gets the duration the circuit stays open before transitioning to half-open.
-    /// Defaults to 30 seconds.
+    /// Defaults to 30 seconds. Ignored for a trip when <see cref="BreakDurationGenerator"/>
+    /// is set — it's still passed to the generator as <see cref="BreakDurationGeneratorArgs.CurrentBreakDuration"/>.
     /// </summary>
     public TimeSpan BreakDuration { get; init; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Gets an optional generator that computes the break duration dynamically for each trip
+    /// (e.g. exponential backoff on repeated trips). When set, it takes precedence over
+    /// <see cref="BreakDuration"/>.
+    /// </summary>
+    public Func<BreakDurationGeneratorArgs, TimeSpan>? BreakDurationGenerator { get; init; }
 
     /// <summary>
     /// Gets the predicate that determines which exceptions count as failures.
@@ -111,6 +121,9 @@ public sealed record CircuitBreakerStrategyOptions<TResult>
     /// <inheritdoc cref="CircuitBreakerStrategyOptions.BreakDuration"/>
     public TimeSpan BreakDuration { get; init; } = TimeSpan.FromSeconds(30);
 
+    /// <inheritdoc cref="CircuitBreakerStrategyOptions.BreakDurationGenerator"/>
+    public Func<BreakDurationGeneratorArgs, TimeSpan>? BreakDurationGenerator { get; init; }
+
     /// <summary>
     /// Gets the predicate that determines which outcomes count as failures.
     /// </summary>
@@ -162,7 +175,7 @@ public sealed record CircuitBreakerStrategyOptions<TResult>
             return ShouldHandle(outcome);
         }
 
-        return outcome.Exception is not null and not OperationCanceledException;
+        return OutcomePredicates.DefaultShouldHandle(outcome);
     }
 }
 
@@ -175,4 +188,15 @@ public sealed record CircuitBreakerStrategyOptions<TResult>
 public readonly record struct CircuitStateChangedEvent(
     CircuitState PreviousState,
     CircuitState CurrentState,
+    ResilienceContext Context);
+
+/// <summary>
+/// Arguments passed to a <c>BreakDurationGenerator</c> delegate when the circuit trips.
+/// </summary>
+/// <param name="FailureCount">How many times the circuit has tripped in total, including this trip.</param>
+/// <param name="CurrentBreakDuration">The static <c>BreakDuration</c> configured on the options.</param>
+/// <param name="Context">The execution context of the call that caused this trip.</param>
+public readonly record struct BreakDurationGeneratorArgs(
+    int FailureCount,
+    TimeSpan CurrentBreakDuration,
     ResilienceContext Context);

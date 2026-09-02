@@ -17,7 +17,7 @@ namespace Resilion;
 /// use <see cref="Pipeline{TResult}"/>.
 /// </para>
 /// </remarks>
-public sealed class Pipeline : IDisposable
+public sealed class Pipeline : IDisposable, IAsyncDisposable
 {
     private readonly PipelineComponent _component;
     private readonly ResilienceContextPool _pool;
@@ -271,6 +271,9 @@ public sealed class Pipeline : IDisposable
 
     /// <inheritdoc />
     public void Dispose() => _component.Dispose();
+
+    /// <inheritdoc />
+    public ValueTask DisposeAsync() => _component.DisposeAsync();
 }
 
 /// <summary>

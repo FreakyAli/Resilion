@@ -135,6 +135,20 @@ public readonly struct Outcome<TResult> : IEquatable<Outcome<TResult>>
     /// Implicitly converts a result value to a successful <see cref="Outcome{TResult}"/>.
     /// </summary>
     /// <param name="result">The result value.</param>
+    /// <remarks>
+    /// <para>
+    /// This always produces a <em>success</em> outcome wrapping <paramref name="result"/> —
+    /// including when <typeparamref name="TResult"/> is itself <see cref="Exception"/> or a
+    /// subtype of it. <c>Outcome&lt;Exception&gt; o = someException;</c> creates a success whose
+    /// result happens to be an exception object, not a failure.
+    /// </para>
+    /// <para>
+    /// If you use <c>Pipeline&lt;Exception&gt;</c> (or any <c>Pipeline&lt;TResult&gt;</c> where
+    /// <typeparamref name="TResult"/> derives from <see cref="Exception"/>), prefer the explicit
+    /// <see cref="FromResult"/> / <see cref="FromException"/> factory methods over relying on
+    /// this implicit conversion, to avoid ambiguity about which one you meant.
+    /// </para>
+    /// </remarks>
     public static implicit operator Outcome<TResult>(TResult result)
         => FromResult(result);
 

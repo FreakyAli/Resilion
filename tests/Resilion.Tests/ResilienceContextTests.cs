@@ -111,4 +111,41 @@ public class ResilienceContextTests
             ResilienceContextPool.Shared.Return(ctx);
         }
     }
+
+    // ──────────────────────────────────────────────────────────────────
+    // Configurable pool cap
+    // ──────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void CustomMaxPoolSize_DiscardsContextsBeyondTheCap()
+    {
+        var pool = new ResilienceContextPool(maxPoolSize: 2);
+
+        var c1 = pool.Rent();
+        var c2 = pool.Rent();
+        var c3 = pool.Rent();
+
+        pool.Return(c1);
+        pool.Return(c2);
+        pool.Return(c3); // cap is 2 — this one should be discarded, not pooled
+
+        var rented = new HashSet<ResilienceContext>(ReferenceEqualityComparer.Instance);
+        for (var i = 0; i < 3; i++)
+        {
+            rented.Add(pool.Rent());
+        }
+
+        // At most 2 of the 3 originally-returned contexts can have been reused —
+        // the third was discarded on return.
+        var reusedCount = new[] { c1, c2, c3 }.Count(rented.Contains);
+        Assert.True(reusedCount <= 2, $"Expected at most 2 contexts reused, got {reusedCount}.");
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void NonPositiveMaxPoolSize_ThrowsAtConstruction(int maxPoolSize)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => new ResilienceContextPool(maxPoolSize));
+    }
 }

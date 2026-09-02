@@ -7,6 +7,10 @@
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![NuGet](https://img.shields.io/nuget/v/Resilion.svg)](https://www.nuget.org/packages/Resilion)
 
+> **Free forever.** Resilion has no paid tier, no "enterprise edition," and no plans to add one. If it's useful to you, consider [buying us a coffee](https://www.buymeacoffee.com/FreakyAli) — never a requirement, always appreciated.
+>
+> [![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-FFDD00?logo=buymeacoffee&logoColor=black)](https://www.buymeacoffee.com/FreakyAli)
+
 ## Quick Start
 
 ```csharp
@@ -35,7 +39,9 @@ var result = await pipeline.ExecuteAsync(
 
 ## Why Resilion?
 
-Resilion is designed for experienced .NET developers who want powerful resilience patterns without complexity:
+Resilion is designed for .NET developers who want powerful resilience patterns without complexity:
+
+> Coming from Polly? See [docs/migration-from-polly.md](docs/migration-from-polly.md) for a concept map and before/after code samples for the five most common patterns, or [docs/comparison-with-polly.md](docs/comparison-with-polly.md) for an honest side-by-side on where each library is stronger today.
 
 ### Zero Dependencies in Core
 The `Resilion` package has **zero external dependencies**. Everything you need for production resilience is built-in.
@@ -332,9 +338,10 @@ services.AddResiliencePipeline("http-api", b => b
     .AddRetry(new RetryStrategyOptions { MaxRetryAttempts = 3 })
     .AddTimeout(TimeSpan.FromSeconds(10)));
 
-// Later, resolve:
-var registry = serviceProvider.GetRequiredService<ResiliencePipelineRegistry<string>>();
-var pipeline = registry.GetPipeline("http-api");
+// Later, resolve — inject IPipelineProvider<string> rather than the full registry if you
+// only need to retrieve pipelines, not register new ones:
+var provider = serviceProvider.GetRequiredService<IPipelineProvider<string>>();
+var pipeline = provider.GetPipeline("http-api");
 
 var result = await pipeline.ExecuteAsync(
     async (client, ct) => await client.GetStringAsync(url, ct),
@@ -343,17 +350,11 @@ var result = await pipeline.ExecuteAsync(
 
 ## Telemetry
 
-Resilion integrates with `System.Diagnostics`:
-
-```csharp
-// Metrics via System.Diagnostics.Metrics.Meter
-var meter = new Meter("Resilion");
-var retryCount = meter.CreateCounter<long>("resilion.retry.attempt_count");
-
-// Activity tracking via ActivitySource
-var activitySource = new ActivitySource("Resilion");
-using var activity = activitySource.StartActivity("pipeline.execute");
-```
+Resilion emits metrics on a `"Resilion"` `Meter` — retry attempts, circuit breaker state
+changes, timeout expirations, fallback activations, hedging attempts, and rate limiter
+rejections — with zero overhead until something subscribes. See
+[docs/telemetry.md](docs/telemetry.md) for the full instrument list and how to subscribe with
+`MeterListener`, `dotnet-counters`, or OpenTelemetry.
 
 Structured logging is also available through callbacks on strategy options.
 
@@ -389,12 +390,27 @@ docs/
 
 Resilion is designed for high-performance, latency-sensitive scenarios:
 
-- Struct-based `Outcome<T>` eliminates heap allocations
+- Struct-based `Outcome<T>` avoids allocating on the result path
 - Pooled `ResilienceContext` for request-scoped state
-- Zero-allocation happy path for most strategies
+- `ResilienceContextPool` trades ~14ns of bookkeeping for eliminating a 72-byte allocation per context
 - Benchmarks included (see `benchmarks/` folder)
 
-Compare with alternatives like Polly to see allocation profiles and throughput characteristics.
+### Benchmark summary
+
+Measured on an Apple M4 Pro against Polly.Core 8.5.2, same pipeline shapes both sides ([full results](benchmarks/results/README.md)):
+
+| Scenario | Resilion | Polly.Core | Notes |
+|----------|---------:|-----------:|-------|
+| Empty pipeline | 69 ns / 96 B | 59 ns / 0 B | Resilion allocates per-strategy closures; Polly's happy path is allocation-free |
+| Single retry (happy path) | 114 ns / 192 B | 165 ns / 0 B | Resilion faster in wall-clock time despite allocating |
+| Composite (Timeout+Retry+CB+Timeout) | 393 ns / 976 B | 734 ns / 0 B | The realistic multi-strategy shape most apps run |
+| Same pipeline, **sync** execution | 61 ns / 192 B | — | True sync — no `Task` machinery |
+
+Resilion is consistently faster wall-clock, at the cost of small per-call allocations from the
+middleware chain's closures (tracked in [future-plans.md](docs/future-plans.md) item #4). If
+your workload does any real I/O per call — the overwhelmingly common case — this difference is
+unlikely to be your bottleneck; if you're pushing hundreds of thousands of allocation-sensitive
+calls/sec with no I/O, benchmark your own shape before choosing.
 
 ## Contributing
 

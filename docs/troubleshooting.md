@@ -127,10 +127,10 @@ Action<RetryAttemptEvent> onRetry = e => logger.Log(e.AttemptNumber);
 
 ---
 
-## Hedging sync path runs sequentially
+## Hedging sync path throws for parallel/latency mode
 
-**Problem**: Hedging with `HedgingDelay = TimeSpan.Zero` (parallel mode) doesn't run attempts in parallel when using `Execute` (sync).
+**Problem**: Calling `Execute` (sync) on a pipeline with `HedgingDelay = TimeSpan.Zero` (parallel mode) or any positive delay (latency mode) throws `InvalidOperationException`.
 
-**Cause**: Parallel execution requires async. The sync path always runs sequentially regardless of `HedgingDelay`.
+**Cause**: Parallel/latency hedging requires concurrent execution, which the sync path can't provide. Rather than silently running the attempts sequentially — defeating the point of hedging with no indication anything was wrong — `Execute()` throws.
 
-**Fix**: Use `ExecuteAsync` for parallel hedging.
+**Fix**: Use `ExecuteAsync` for parallel or latency hedging, or set `HedgingDelay = Timeout.InfiniteTimeSpan` (sequential mode) if you specifically need the sync path.

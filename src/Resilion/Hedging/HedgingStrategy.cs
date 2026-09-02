@@ -140,8 +140,17 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
         Func<ResilienceContext, Outcome<TResult>> callback,
         ResilienceContext context)
     {
-        // Hedging is inherently async (parallel execution).
-        // For the sync path, execute sequentially (equivalent to InfiniteTimeSpan mode).
+        // Hedging's entire value proposition is running attempts concurrently. The sync path
+        // can only ever run sequentially — silently degrading parallel/latency hedging to
+        // sequential would give the caller zero indication their hedging isn't actually hedging.
+        if (_options.HedgingDelay != System.Threading.Timeout.InfiniteTimeSpan)
+        {
+            throw new InvalidOperationException(
+                "Parallel and latency hedging modes require async execution. Use ExecuteAsync(), " +
+                "or set HedgingDelay to Timeout.InfiniteTimeSpan for sequential mode.");
+        }
+
+        // Sequential mode: execute sequentially (equivalent to InfiniteTimeSpan mode).
         Outcome<TResult> lastOutcome = default;
 
         for (var attemptIndex = 0; attemptIndex < _options.MaxHedgedAttempts; attemptIndex++)

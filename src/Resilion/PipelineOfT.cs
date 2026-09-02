@@ -11,7 +11,7 @@ namespace Resilion;
 /// <remarks>
 /// Pipelines are thread-safe and immutable after construction. Build once, cache, and reuse.
 /// </remarks>
-public sealed class Pipeline<TResult> : IDisposable
+public sealed class Pipeline<TResult> : IDisposable, IAsyncDisposable
 {
     private readonly PipelineComponent _component;
     private readonly ResilienceContextPool _pool;
@@ -172,4 +172,7 @@ public sealed class Pipeline<TResult> : IDisposable
 
     /// <inheritdoc />
     public void Dispose() => _component.Dispose();
+
+    /// <inheritdoc />
+    public ValueTask DisposeAsync() => _component.DisposeAsync();
 }

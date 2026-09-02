@@ -206,7 +206,7 @@ public class HedgingStrategyTests
             new HedgingStrategyOptions<string>
             {
                 MaxHedgedAttempts = 3,
-                HedgingDelay = TimeSpan.FromSeconds(1), // Ignored in sync — always sequential
+                HedgingDelay = System.Threading.Timeout.InfiniteTimeSpan, // Sequential mode
             }));
 
         var result = pipeline.Execute(ct =>
@@ -222,6 +222,36 @@ public class HedgingStrategyTests
 
         Assert.Equal("success", result);
         Assert.Equal(3, callCount);
+    }
+
+    [Fact]
+    public void Sync_NonSequentialMode_Throws()
+    {
+        // Parallel and latency hedging modes require concurrent execution, which the sync path
+        // can't provide — it must throw rather than silently degrade to sequential.
+        var pipeline = Pipeline.Create<string>(b => b.AddHedging(
+            new HedgingStrategyOptions<string>
+            {
+                MaxHedgedAttempts = 3,
+                HedgingDelay = TimeSpan.FromSeconds(1), // Latency mode
+            }));
+
+        Assert.Throws<InvalidOperationException>(() =>
+            pipeline.Execute(ct => "unreachable"));
+    }
+
+    [Fact]
+    public void Sync_ParallelMode_Throws()
+    {
+        var pipeline = Pipeline.Create<string>(b => b.AddHedging(
+            new HedgingStrategyOptions<string>
+            {
+                MaxHedgedAttempts = 3,
+                HedgingDelay = TimeSpan.Zero, // Parallel mode
+            }));
+
+        Assert.Throws<InvalidOperationException>(() =>
+            pipeline.Execute(ct => "unreachable"));
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -354,5 +384,157 @@ public class HedgingStrategyTests
         public ResilienceContext OriginalContext = null!;
         public ResiliencePropertyKey<string> PropertyKey;
         public string? CapturedValue;
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // Latency mode (HedgingDelay > 0) — the core hedging use case
+    // ──────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task LatencyMode_PrimarySlow_SecondaryFiresAfterDelayAndWins()
+    {
+        var fakeTime = new FakeTimeProvider();
+        var callCount = 0;
+        var primaryTcs = new TaskCompletionSource<string>();
+
+        var pipeline = Pipeline.Create<string>(b =>
+        {
+            b.TimeProvider = fakeTime;
+            b.AddHedging(new HedgingStrategyOptions<string>
+            {
+                MaxHedgedAttempts = 2,
+                HedgingDelay = TimeSpan.FromSeconds(2),
+            });
+        });
+
+        var executeTask = pipeline.ExecuteAsync(ct =>
+        {
+            var attempt = Interlocked.Increment(ref callCount);
+            return attempt == 1
+                ? new ValueTask<string>(primaryTcs.Task) // primary: never completes on its own
+                : new ValueTask<string>("secondary-fast");
+        }).AsTask();
+
+        // Let the primary attempt actually start running on its own Task.Run thread
+        // before we advance the clock past the hedging delay.
+        await Task.Delay(TimeSpan.FromMilliseconds(50));
+        fakeTime.Advance(TimeSpan.FromSeconds(3));
+
+        var result = await executeTask;
+
+        Assert.Equal("secondary-fast", result);
+        Assert.Equal(2, callCount);
+    }
+
+    [Fact]
+    public async Task LatencyMode_PrimarySucceedsBeforeDelay_SecondaryNeverFires()
+    {
+        var fakeTime = new FakeTimeProvider();
+        var callCount = 0;
+
+        var pipeline = Pipeline.Create<string>(b =>
+        {
+            b.TimeProvider = fakeTime;
+            b.AddHedging(new HedgingStrategyOptions<string>
+            {
+                MaxHedgedAttempts = 2,
+                HedgingDelay = TimeSpan.FromSeconds(2),
+            });
+        });
+
+        var result = await pipeline.ExecuteAsync(ct =>
+        {
+            Interlocked.Increment(ref callCount);
+            return new ValueTask<string>("primary-fast");
+        });
+
+        Assert.Equal("primary-fast", result);
+
+        // Even if we advance well past the hedging delay after the primary already completed,
+        // no secondary attempt should have been launched.
+        fakeTime.Advance(TimeSpan.FromSeconds(5));
+        Assert.Equal(1, callCount);
+    }
+
+    [Fact]
+    public async Task LatencyMode_BothSlow_SecondaryEventuallySucceeds()
+    {
+        var fakeTime = new FakeTimeProvider();
+        var callCount = 0;
+        var primaryTcs = new TaskCompletionSource<string>();
+        var secondaryTcs = new TaskCompletionSource<string>();
+
+        var pipeline = Pipeline.Create<string>(b =>
+        {
+            b.TimeProvider = fakeTime;
+            b.AddHedging(new HedgingStrategyOptions<string>
+            {
+                MaxHedgedAttempts = 2,
+                HedgingDelay = TimeSpan.FromSeconds(2),
+            });
+        });
+
+        var executeTask = pipeline.ExecuteAsync(ct =>
+        {
+            var attempt = Interlocked.Increment(ref callCount);
+            return attempt == 1
+                ? new ValueTask<string>(primaryTcs.Task)
+                : new ValueTask<string>(secondaryTcs.Task);
+        }).AsTask();
+
+        // Let the primary start, then advance past the hedging delay so the secondary launches.
+        await Task.Delay(TimeSpan.FromMilliseconds(50));
+        fakeTime.Advance(TimeSpan.FromSeconds(3));
+        await Task.Delay(TimeSpan.FromMilliseconds(50));
+
+        // Both attempts are still pending — now let the secondary win.
+        secondaryTcs.SetResult("secondary-wins");
+
+        var result = await executeTask;
+        Assert.Equal("secondary-wins", result);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // Cleanup: non-cooperative losing attempt doesn't hang indefinitely
+    // ──────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Cleanup_NonCooperativeLosingAttempt_DoesNotHangIndefinitely()
+    {
+        var callCount = 0;
+
+        var pipeline = Pipeline.Create<string>(b => b.AddHedging(
+            new HedgingStrategyOptions<string>
+            {
+                MaxHedgedAttempts = 2,
+                HedgingDelay = TimeSpan.Zero, // Parallel mode — both launch immediately.
+            }));
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        var result = await pipeline.ExecuteAsync(ct =>
+        {
+            var attempt = Interlocked.Increment(ref callCount);
+            if (attempt == 1)
+            {
+                // Winning attempt: succeeds immediately.
+                return new ValueTask<string>("winner");
+            }
+
+            // Losing attempt: ignores cancellation entirely (never observes the token).
+            // The strategy's cleanup path must bound how long it waits for this to finish.
+            return new ValueTask<string>(Task.Run(() =>
+            {
+                Thread.Sleep(TimeSpan.FromMinutes(10));
+                return "never";
+            }));
+        });
+
+        sw.Stop();
+
+        Assert.Equal("winner", result);
+        // The strategy's cleanup deadline is a bounded few seconds, not indefinite.
+        Assert.True(sw.Elapsed < TimeSpan.FromSeconds(15),
+            $"Expected bounded cleanup, took {sw.Elapsed}.");
     }
 }

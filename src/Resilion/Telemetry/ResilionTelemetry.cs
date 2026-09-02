@@ -21,14 +21,9 @@ public static class ResilionTelemetry
     internal static readonly Meter Meter = new(MeterName);
     internal static readonly ActivitySource ActivitySource = new(ActivitySourceName);
 
-    internal static readonly Counter<long> StrategyExecutions = Meter.CreateCounter<long>(
-        "resilion.strategy.executions",
-        description: "Total strategy executions.");
-
-    internal static readonly Histogram<double> StrategyDuration = Meter.CreateHistogram<double>(
-        "resilion.strategy.duration",
-        unit: "s",
-        description: "Strategy execution duration in seconds.");
+    // Pipeline-level execution count and duration instruments are planned for a future
+    // telemetry-wrapping component. They are intentionally omitted here rather than declared
+    // unused — the per-strategy counters below are the only instruments this meter emits today.
 
     internal static readonly Counter<long> RetryAttempts = Meter.CreateCounter<long>(
         "resilion.retry.attempts",

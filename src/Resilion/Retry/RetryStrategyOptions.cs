@@ -1,3 +1,5 @@
+using Resilion.Internal;
+
 namespace Resilion;
 
 /// <summary>
@@ -24,6 +26,14 @@ public sealed record RetryStrategyOptions
     public bool UseJitter { get; init; } = true;
 
     /// <summary>
+    /// Gets an optional global cap on the computed retry delay, applied after <see cref="Delay"/>
+    /// computes it (including any per-strategy cap it already has, e.g. <c>RetryDelay.Exponential</c>'s
+    /// own <c>maxDelay</c>). Useful as a safety net for a <see cref="RetryDelay.Custom"/> delegate
+    /// that could otherwise return an unbounded delay.
+    /// </summary>
+    public TimeSpan? MaxDelay { get; init; }
+
+    /// <summary>
     /// Gets the predicate that determines which exceptions trigger a retry.
     /// Defaults to all exceptions except <see cref="OperationCanceledException"/>.
     /// </summary>
@@ -40,6 +50,12 @@ public sealed record RetryStrategyOptions
         {
             throw new ArgumentOutOfRangeException(nameof(MaxRetryAttempts), MaxRetryAttempts,
                 "MaxRetryAttempts must be >= 0.");
+        }
+
+        if (MaxDelay.HasValue && MaxDelay.Value < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(MaxDelay), MaxDelay,
+                "MaxDelay must not be negative.");
         }
     }
 
@@ -76,6 +92,9 @@ public sealed record RetryStrategyOptions<TResult>
     /// </summary>
     public bool UseJitter { get; init; } = true;
 
+    /// <inheritdoc cref="RetryStrategyOptions.MaxDelay"/>
+    public TimeSpan? MaxDelay { get; init; }
+
     /// <summary>
     /// Gets the predicate that determines which outcomes (exceptions or results) trigger a retry.
     /// Receives the <see cref="Outcome{TResult}"/> to enable both exception and result-based decisions.
@@ -94,6 +113,12 @@ public sealed record RetryStrategyOptions<TResult>
             throw new ArgumentOutOfRangeException(nameof(MaxRetryAttempts), MaxRetryAttempts,
                 "MaxRetryAttempts must be >= 0.");
         }
+
+        if (MaxDelay.HasValue && MaxDelay.Value < TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(MaxDelay), MaxDelay,
+                "MaxDelay must not be negative.");
+        }
     }
 
     internal bool ShouldHandleOutcome(Outcome<TResult> outcome)
@@ -105,7 +130,7 @@ public sealed record RetryStrategyOptions<TResult>
         }
 
         // Default: handle any exception except OperationCanceledException.
-        return outcome.Exception is not null and not OperationCanceledException;
+        return OutcomePredicates.DefaultShouldHandle(outcome);
     }
 }
 

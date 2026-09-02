@@ -62,6 +62,12 @@ public readonly struct ResilienceEventHandler<TArgs>
     /// Invokes the handler synchronously. If the handler is async, blocks until completion.
     /// </summary>
     /// <param name="args">The event arguments.</param>
+    /// <remarks>
+    /// For a genuinely async handler under load with a <see cref="SynchronizationContext"/> present
+    /// (WPF, WinForms, legacy ASP.NET), this costs two threads per invocation — one ThreadPool
+    /// thread running the handler plus the calling thread blocked on it. Prefer
+    /// <see cref="InvokeAsync"/> from an async execution path when possible.
+    /// </remarks>
     internal void Invoke(TArgs args)
     {
         if (_syncHandler is not null)
@@ -72,10 +78,18 @@ public readonly struct ResilienceEventHandler<TArgs>
 
         if (_asyncHandler is not null)
         {
-            // Copy to local to avoid struct 'this' capture in lambda.
-            // Run on the thread pool to avoid deadlocking when a SynchronizationContext
-            // is present (WPF, WinForms).
             var handler = _asyncHandler;
+
+            if (SynchronizationContext.Current is null)
+            {
+                // No context to deadlock against: call directly. Completes synchronously with
+                // no thread hop in the common case (e.g. a handler that checks a cached value).
+                handler(args).GetAwaiter().GetResult();
+                return;
+            }
+
+            // A SynchronizationContext is present — run the handler on the thread pool so its
+            // continuations resume there instead of trying to resume on this (now blocked) thread.
             Task.Run(() => handler(args).AsTask()).GetAwaiter().GetResult();
         }
     }

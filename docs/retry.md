@@ -27,6 +27,7 @@ var result = await pipeline.ExecuteAsync(async ct =>
 | `MaxRetryAttempts` | `int` | 3 | Number of retries (not counting initial call). 0 = no retries. |
 | `Delay` | `RetryDelay` | Exponential(1s, max 30s) | Delay strategy between retries |
 | `UseJitter` | `bool` | `true` | Apply decorrelated jitter to delays |
+| `MaxDelay` | `TimeSpan?` | null | Global safety cap applied after `Delay` computes its value — useful with `RetryDelay.Custom` |
 | `ShouldHandle` | `Func<Exception, bool>` | All except `OperationCanceledException` | Which exceptions trigger retry |
 | `OnRetry` | `ResilienceEventHandler<RetryAttemptEvent>` | null | Callback before each retry wait |
 

@@ -35,18 +35,20 @@ public class RealWorldScenarioBenchmarks
                 SamplingDuration = TimeSpan.FromSeconds(5),
             }));
 
-        // ────── Resilion: Database Query Pattern (Timeout + Retry + Fallback) ──────
-        // Typical for: Database reads with cache fallback
+        // ────── Resilion: Database Query Pattern (Fallback + Timeout + Retry) ──────
+        // Typical for: Database reads with cache fallback. Fallback must be outermost so it
+        // catches failures from Retry (once exhausted) and Timeout, not just the raw callback —
+        // see docs/pipelines.md's ordering validation.
         _resilionDbQuery = Resilion.Pipeline.Create<string>(b => b
+            .AddFallback(new FallbackStrategyOptions<string>
+            {
+                FallbackAction = "CACHED_DEFAULT"
+            })
             .AddTimeout(TimeSpan.FromSeconds(10))
             .AddRetry(new RetryStrategyOptions
             {
                 MaxRetryAttempts = 1,
                 Delay = RetryDelay.Linear(TimeSpan.FromMilliseconds(50)),
-            })
-            .AddFallback(new FallbackStrategyOptions<string>
-            {
-                FallbackAction = "CACHED_DEFAULT"
             }));
 
         // ────── Resilion: Hedging Pattern (Parallel attempts, fail fast) ──────

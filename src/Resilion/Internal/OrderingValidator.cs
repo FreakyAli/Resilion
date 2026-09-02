@@ -1,21 +1,39 @@
 namespace Resilion.Internal;
 
 /// <summary>
-/// Validates strategy ordering at Build() time and returns diagnostic warnings
-/// for common misorderings. Warnings only — never blocks the build.
+/// The result of <see cref="OrderingValidator.Validate"/>: dangerous misorderings that are
+/// (almost) always wrong, separated from situational ones that merely warrant a second look.
+/// </summary>
+/// <param name="Errors">
+/// Misorderings that are essentially always a bug (CircuitBreaker outside Retry, Fallback not
+/// outermost). Callers may choose to throw on these — see <c>PipelineBuilderBase.ThrowOnOrderingErrors</c>.
+/// </param>
+/// <param name="Warnings">
+/// Situational misorderings (3+ Timeouts, Hedging + Retry together, Retry outermost with no
+/// Timeout) that are sometimes intentional. Always advisory, never thrown.
+/// </param>
+internal readonly record struct OrderingValidationResult(List<string> Errors, List<string> Warnings)
+{
+    /// <summary>Convenience accessor for callers that don't need the error/warning distinction.</summary>
+    internal IEnumerable<string> AllMessages => Errors.Concat(Warnings);
+}
+
+/// <summary>
+/// Validates strategy ordering at Build() time and returns diagnostics for common misorderings.
 /// </summary>
 internal static class OrderingValidator
 {
     /// <summary>
-    /// Validates the order of strategies and returns any warnings.
+    /// Validates the order of strategies and returns any errors and warnings.
     /// </summary>
-    internal static List<string> Validate(IReadOnlyList<StrategyType> strategies)
+    internal static OrderingValidationResult Validate(IReadOnlyList<StrategyType> strategies)
     {
+        var errors = new List<string>();
         var warnings = new List<string>();
 
         if (strategies.Count < 2)
         {
-            return warnings;
+            return new OrderingValidationResult(errors, warnings);
         }
 
         // Build index maps for quick lookup.
@@ -32,8 +50,9 @@ internal static class OrderingValidator
             list.Add(i);
         }
 
-        // Rule 1: CircuitBreaker should be inside (after) Retry, not outside (before).
-        // If CB is before Retry, retries bypass the breaker entirely.
+        // Error 1: CircuitBreaker should be inside (after) Retry, not outside (before).
+        // If CB is before Retry, retries bypass the breaker entirely — this is essentially
+        // always a bug, never an intentional design choice.
         if (positions.TryGetValue(StrategyType.CircuitBreaker, out var cbPositions)
             && positions.TryGetValue(StrategyType.Retry, out var retryPositions))
         {
@@ -43,30 +62,31 @@ internal static class OrderingValidator
                 {
                     if (cbPos < retryPos)
                     {
-                        warnings.Add(
+                        errors.Add(
                             "CircuitBreaker is outside Retry (position " + cbPos + " vs " + retryPos + "). " +
-                            "This means retries bypass the circuit breaker. Usually CircuitBreaker should be " +
+                            "This means retries bypass the circuit breaker. CircuitBreaker must be " +
                             "inside (after) Retry so each attempt is tracked independently.");
                     }
                 }
             }
         }
 
-        // Rule 2: Fallback should typically be outermost (first) to catch all failures.
+        // Error 2: Fallback should be outermost (first) to catch all failures — a Fallback
+        // that isn't outermost fails to catch failures from strategies placed outside it.
         if (positions.TryGetValue(StrategyType.Fallback, out var fallbackPositions))
         {
             foreach (var fbPos in fallbackPositions)
             {
                 if (fbPos > 0)
                 {
-                    warnings.Add(
+                    errors.Add(
                         "Fallback is at position " + fbPos + ", not outermost (position 0). " +
-                        "Fallback typically goes first so it catches failures from all inner strategies.");
+                        "Fallback must go first so it catches failures from all inner strategies.");
                 }
             }
         }
 
-        // Rule 3: Hedging and Retry together — may cause excessive load.
+        // Warning 1: Hedging and Retry together — may cause excessive load. Sometimes intentional.
         if (positions.ContainsKey(StrategyType.Hedging) && positions.ContainsKey(StrategyType.Retry))
         {
             warnings.Add(
@@ -75,7 +95,7 @@ internal static class OrderingValidator
                 "Verify this is intentional.");
         }
 
-        // Rule 4: Multiple Timeout strategies without clear total/per-attempt separation.
+        // Warning 2: Multiple Timeout strategies without clear total/per-attempt separation.
         if (positions.TryGetValue(StrategyType.Timeout, out var timeoutPositions) && timeoutPositions.Count > 2)
         {
             warnings.Add(
@@ -83,7 +103,7 @@ internal static class OrderingValidator
                 "one total timeout (outermost) and one per-attempt timeout (innermost).");
         }
 
-        // Rule 5: Retry as outermost strategy with no Timeout outside it.
+        // Warning 3: Retry as outermost strategy with no Timeout outside it.
         if (positions.TryGetValue(StrategyType.Retry, out var retryPos2))
         {
             foreach (var rPos in retryPos2)
@@ -97,6 +117,6 @@ internal static class OrderingValidator
             }
         }
 
-        return warnings;
+        return new OrderingValidationResult(errors, warnings);
     }
 }

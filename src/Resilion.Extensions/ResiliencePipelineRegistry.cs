@@ -7,7 +7,7 @@ namespace Resilion.Extensions;
 /// on first access and cached for the lifetime of the registry.
 /// </summary>
 /// <typeparam name="TKey">The key type for pipeline lookup. Typically <see cref="string"/>.</typeparam>
-public sealed class ResiliencePipelineRegistry<TKey> : IDisposable
+public sealed class ResiliencePipelineRegistry<TKey> : IPipelineProvider<TKey>, IDisposable
     where TKey : notnull
 {
     private readonly ConcurrentDictionary<TKey, Lazy<Pipeline>> _pipelines = new();

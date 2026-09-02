@@ -53,6 +53,10 @@ internal sealed class RetryStrategy : Strategy
             // Compute delay.
             var retryNumber = attempt + 1;
             var delay = _options.Delay.ComputeDelay(retryNumber, _options.UseJitter);
+            if (_options.MaxDelay.HasValue && delay > _options.MaxDelay.Value)
+            {
+                delay = _options.MaxDelay.Value;
+            }
 
             ResilionTelemetry.RetryAttempts.Add(1);
 
@@ -109,6 +113,10 @@ internal sealed class RetryStrategy : Strategy
 
             var retryNumber = attempt + 1;
             var delay = _options.Delay.ComputeDelay(retryNumber, _options.UseJitter);
+            if (_options.MaxDelay.HasValue && delay > _options.MaxDelay.Value)
+            {
+                delay = _options.MaxDelay.Value;
+            }
 
             ResilionTelemetry.RetryAttempts.Add(1);
 
@@ -173,6 +181,10 @@ internal sealed class RetryStrategy<TResult> : Strategy<TResult>
 
             var retryNumber = attempt + 1;
             var delay = _options.Delay.ComputeDelay(retryNumber, _options.UseJitter);
+            if (_options.MaxDelay.HasValue && delay > _options.MaxDelay.Value)
+            {
+                delay = _options.MaxDelay.Value;
+            }
 
             ResilionTelemetry.RetryAttempts.Add(1);
 
@@ -222,6 +234,10 @@ internal sealed class RetryStrategy<TResult> : Strategy<TResult>
 
             var retryNumber = attempt + 1;
             var delay = _options.Delay.ComputeDelay(retryNumber, _options.UseJitter);
+            if (_options.MaxDelay.HasValue && delay > _options.MaxDelay.Value)
+            {
+                delay = _options.MaxDelay.Value;
+            }
 
             ResilionTelemetry.RetryAttempts.Add(1);
 

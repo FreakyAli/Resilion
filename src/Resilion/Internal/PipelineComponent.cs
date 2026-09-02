@@ -4,7 +4,7 @@ namespace Resilion.Internal;
 /// Internal component in the pipeline execution chain. Each strategy is wrapped in a component
 /// that calls the next component in the chain, forming a middleware-like pipeline.
 /// </summary>
-internal abstract class PipelineComponent : IDisposable
+internal abstract class PipelineComponent : IDisposable, IAsyncDisposable
 {
     /// <summary>
     /// Executes this component's logic and optionally delegates to the next component.
@@ -22,6 +22,12 @@ internal abstract class PipelineComponent : IDisposable
 
     public virtual void Dispose()
     {
+    }
+
+    public virtual ValueTask DisposeAsync()
+    {
+        Dispose();
+        return default;
     }
 
     /// <summary>
@@ -80,6 +86,12 @@ internal sealed class StrategyComponent : PipelineComponent
         _strategy.Dispose();
         _next.Dispose();
     }
+
+    public override async ValueTask DisposeAsync()
+    {
+        await _strategy.DisposeAsync().ConfigureAwait(false);
+        await _next.DisposeAsync().ConfigureAwait(false);
+    }
 }
 
 /// <summary>
@@ -108,6 +120,7 @@ internal sealed class TypedStrategyComponent<TStrategyResult> : PipelineComponen
         }
 
         // Type mismatch — skip this strategy entirely.
+        WarnTypeMismatch(typeof(TResult));
         return _next.ExecuteAsync(callback, context);
     }
 
@@ -120,7 +133,21 @@ internal sealed class TypedStrategyComponent<TStrategyResult> : PipelineComponen
             return ExecuteTyped(callback, context);
         }
 
+        WarnTypeMismatch(typeof(TResult));
         return _next.Execute(callback, context);
+    }
+
+    /// <summary>
+    /// A typed strategy added to an untyped <see cref="Pipeline"/> silently does nothing when
+    /// executed with a different result type — <c>typeof(TResult) != typeof(TStrategyResult)</c>.
+    /// This doesn't change that behavior (it's still not an error), but at least makes it
+    /// visible when debugging why a strategy doesn't seem to run.
+    /// </summary>
+    private void WarnTypeMismatch(Type requestedType)
+    {
+        System.Diagnostics.Debug.WriteLine(
+            $"[Resilion] {_strategy.GetType().Name} is a Strategy<{typeof(TStrategyResult).Name}> but was " +
+            $"executed with result type {requestedType.Name} — this strategy was skipped, not applied.");
     }
 
     private ValueTask<Outcome<TResult>> ExecuteTypedAsync<TResult>(
@@ -163,5 +190,11 @@ internal sealed class TypedStrategyComponent<TStrategyResult> : PipelineComponen
     {
         _strategy.Dispose();
         _next.Dispose();
+    }
+
+    public override async ValueTask DisposeAsync()
+    {
+        await _strategy.DisposeAsync().ConfigureAwait(false);
+        await _next.DisposeAsync().ConfigureAwait(false);
     }
 }

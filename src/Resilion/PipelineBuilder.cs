@@ -3,23 +3,15 @@ using Resilion.Internal;
 namespace Resilion;
 
 /// <summary>
-/// Builds a <see cref="Pipeline"/> by composing resilience strategies. Strategies execute
-/// outermost to innermost — the first strategy added is the first to see each call.
+/// Shared state and behavior for <see cref="PipelineBuilder"/> and <see cref="PipelineBuilder{TResult}"/>:
+/// the pipeline name, <see cref="System.TimeProvider"/>, and ordering-warning configuration.
 /// </summary>
 /// <remarks>
-/// <para>
-/// The canonical strategy order is: RateLimiter → TotalTimeout → Retry → CircuitBreaker → AttemptTimeout.
-/// </para>
-/// <para>
 /// Builders are not thread-safe and should not be shared. Build once, then cache and reuse
-/// the resulting <see cref="Pipeline"/>.
-/// </para>
+/// the resulting pipeline.
 /// </remarks>
-public sealed class PipelineBuilder
+public abstract class PipelineBuilderBase
 {
-    private readonly List<Func<PipelineComponent, PipelineComponent>> _componentFactories = [];
-    private readonly List<StrategyType> _strategyTypes = [];
-
     /// <summary>
     /// Gets or sets an optional name for the pipeline, used in telemetry and diagnostics.
     /// </summary>
@@ -32,77 +24,54 @@ public sealed class PipelineBuilder
     public TimeProvider TimeProvider { get; set; } = TimeProvider.System;
 
     /// <summary>
-    /// When <c>true</c>, suppresses ordering validation warnings at <see cref="Build"/> time.
-    /// Defaults to <c>false</c>.
+    /// When <c>true</c>, suppresses ordering validation entirely (both errors and warnings) at
+    /// build time. Defaults to <c>false</c>.
     /// </summary>
     public bool SuppressOrderingWarnings { get; set; }
 
     /// <summary>
-    /// Optional callback that receives ordering validation warnings at <see cref="Build"/> time.
-    /// When null, warnings are written to <see cref="System.Diagnostics.Debug.WriteLine(string)"/>.
+    /// When <c>true</c>, dangerous strategy misorderings (CircuitBreaker outside Retry, Fallback
+    /// not outermost) throw <see cref="InvalidOperationException"/> at build time
+    /// instead of only warning. Defaults to <c>true</c> — these misorderings are essentially
+    /// always a bug. Situational misorderings (3+ Timeouts, Hedging + Retry together) always
+    /// remain advisory regardless of this setting. Has no effect when
+    /// <see cref="SuppressOrderingWarnings"/> is <c>true</c>.
+    /// </summary>
+    public bool ThrowOnOrderingErrors { get; set; } = true;
+
+    /// <summary>
+    /// Optional callback that receives ordering validation warnings at build time (both the
+    /// advisory warnings, and the dangerous-misordering errors when <see cref="ThrowOnOrderingErrors"/>
+    /// is <c>false</c>). When null, warnings are written to <see cref="System.Diagnostics.Debug.WriteLine(string)"/>.
     /// </summary>
     public Action<string>? OnValidationWarning { get; set; }
 
-    /// <summary>
-    /// Adds a non-generic strategy to the pipeline.
-    /// </summary>
-    /// <param name="strategy">The strategy to add.</param>
-    /// <returns>This builder for chaining.</returns>
-    public PipelineBuilder AddStrategy(Strategy strategy)
-    {
-        ArgumentNullException.ThrowIfNull(strategy);
-        _componentFactories.Add(next => new StrategyComponent(strategy, next));
-        _strategyTypes.Add(StrategyType.Unknown);
-        return this;
-    }
+    private protected bool Built { get; set; }
 
-    internal PipelineBuilder AddStrategy(Strategy strategy, StrategyType type)
+    private protected void ThrowIfBuilt()
     {
-        ArgumentNullException.ThrowIfNull(strategy);
-        _componentFactories.Add(next => new StrategyComponent(strategy, next));
-        _strategyTypes.Add(type);
-        return this;
+        if (Built)
+        {
+            throw new InvalidOperationException(
+                "This builder has already been built. Create a new builder for a new pipeline.");
+        }
     }
 
     /// <summary>
-    /// Flattens another pipeline's strategies into this builder, enabling composition of pre-built pipelines.
+    /// Applies ordering validation: throws for errors when configured to, otherwise emits both
+    /// errors and warnings through the advisory path.
     /// </summary>
-    /// <param name="pipeline">The pipeline whose strategies will be added.</param>
-    /// <returns>This builder for chaining.</returns>
-    public PipelineBuilder AddPipeline(Pipeline pipeline)
+    private protected void ApplyOrderingValidation(OrderingValidationResult result)
     {
-        ArgumentNullException.ThrowIfNull(pipeline);
-        var outerComponent = pipeline.Component;
-        _componentFactories.Add(next => new DelegatingComponent(outerComponent, next));
-        _strategyTypes.Add(StrategyType.Custom);
-        return this;
-    }
-
-    /// <summary>
-    /// Builds the pipeline. The builder should not be used after calling this method.
-    /// </summary>
-    /// <returns>An immutable, thread-safe <see cref="Pipeline"/>.</returns>
-    public Pipeline Build()
-    {
-        if (_componentFactories.Count == 0)
+        if (ThrowOnOrderingErrors && result.Errors.Count > 0)
         {
-            return Pipeline.Empty;
+            throw new InvalidOperationException(
+                "Pipeline has dangerous strategy ordering: " + string.Join(" ", result.Errors) +
+                " Fix the ordering, or set ThrowOnOrderingErrors = false to only warn.");
         }
 
-        // Validate ordering unless suppressed.
-        if (!SuppressOrderingWarnings && _strategyTypes.Count >= 2)
-        {
-            var warnings = OrderingValidator.Validate(_strategyTypes);
-            EmitWarnings(warnings);
-        }
-
-        var component = PipelineComponent.Empty;
-        for (var i = _componentFactories.Count - 1; i >= 0; i--)
-        {
-            component = _componentFactories[i](component);
-        }
-
-        return new Pipeline(component);
+        EmitWarnings(result.Errors);
+        EmitWarnings(result.Warnings);
     }
 
     private void EmitWarnings(List<string> warnings)
@@ -122,42 +91,102 @@ public sealed class PipelineBuilder
 }
 
 /// <summary>
-/// Builds a <see cref="Pipeline{TResult}"/> by composing resilience strategies. Supports both
-/// non-generic strategies (Timeout, RateLimiter) and typed strategies (Fallback, Hedging).
+/// Builds a <see cref="Pipeline"/> by composing resilience strategies. Strategies execute
+/// outermost to innermost — the first strategy added is the first to see each call.
 /// </summary>
-/// <typeparam name="TResult">The result type for the pipeline.</typeparam>
-public sealed class PipelineBuilder<TResult>
+/// <remarks>
+/// The canonical strategy order is: RateLimiter → TotalTimeout → Retry → CircuitBreaker → AttemptTimeout.
+/// </remarks>
+public sealed class PipelineBuilder : PipelineBuilderBase
 {
     private readonly List<Func<PipelineComponent, PipelineComponent>> _componentFactories = [];
     private readonly List<StrategyType> _strategyTypes = [];
 
     /// <summary>
-    /// Gets or sets an optional name for the pipeline, used in telemetry and diagnostics.
+    /// Adds a non-generic strategy to the pipeline.
     /// </summary>
-    public string? Name { get; set; }
+    /// <param name="strategy">The strategy to add.</param>
+    /// <returns>This builder for chaining.</returns>
+    public PipelineBuilder AddStrategy(Strategy strategy)
+    {
+        ThrowIfBuilt();
+        ArgumentNullException.ThrowIfNull(strategy);
+        _componentFactories.Add(next => new StrategyComponent(strategy, next));
+        _strategyTypes.Add(StrategyType.Unknown);
+        return this;
+    }
+
+    internal PipelineBuilder AddStrategy(Strategy strategy, StrategyType type)
+    {
+        ThrowIfBuilt();
+        ArgumentNullException.ThrowIfNull(strategy);
+        _componentFactories.Add(next => new StrategyComponent(strategy, next));
+        _strategyTypes.Add(type);
+        return this;
+    }
 
     /// <summary>
-    /// Gets or sets the <see cref="System.TimeProvider"/> used by time-dependent strategies.
-    /// Defaults to <see cref="System.TimeProvider.System"/>.
+    /// Flattens another pipeline's strategies into this builder, enabling composition of pre-built pipelines.
     /// </summary>
-    public TimeProvider TimeProvider { get; set; } = TimeProvider.System;
+    /// <param name="pipeline">The pipeline whose strategies will be added.</param>
+    /// <returns>This builder for chaining.</returns>
+    public PipelineBuilder AddPipeline(Pipeline pipeline)
+    {
+        ThrowIfBuilt();
+        ArgumentNullException.ThrowIfNull(pipeline);
+        var outerComponent = pipeline.Component;
+        _componentFactories.Add(next => new DelegatingComponent(outerComponent, next));
+        _strategyTypes.Add(StrategyType.Custom);
+        return this;
+    }
 
     /// <summary>
-    /// When <c>true</c>, suppresses ordering validation warnings at <see cref="Build"/> time.
+    /// Builds the pipeline. The builder should not be used after calling this method —
+    /// doing so throws <see cref="InvalidOperationException"/>.
     /// </summary>
-    public bool SuppressOrderingWarnings { get; set; }
+    /// <returns>An immutable, thread-safe <see cref="Pipeline"/>.</returns>
+    public Pipeline Build()
+    {
+        ThrowIfBuilt();
+        Built = true;
 
-    /// <summary>
-    /// Optional callback that receives ordering validation warnings.
-    /// When null, warnings go to <see cref="System.Diagnostics.Debug.WriteLine(string)"/>.
-    /// </summary>
-    public Action<string>? OnValidationWarning { get; set; }
+        if (_componentFactories.Count == 0)
+        {
+            return Pipeline.Empty;
+        }
+
+        // Validate ordering unless suppressed.
+        if (!SuppressOrderingWarnings && _strategyTypes.Count >= 2)
+        {
+            ApplyOrderingValidation(OrderingValidator.Validate(_strategyTypes));
+        }
+
+        var component = PipelineComponent.Empty;
+        for (var i = _componentFactories.Count - 1; i >= 0; i--)
+        {
+            component = _componentFactories[i](component);
+        }
+
+        return new Pipeline(component);
+    }
+}
+
+/// <summary>
+/// Builds a <see cref="Pipeline{TResult}"/> by composing resilience strategies. Supports both
+/// non-generic strategies (Timeout, RateLimiter) and typed strategies (Fallback, Hedging).
+/// </summary>
+/// <typeparam name="TResult">The result type for the pipeline.</typeparam>
+public sealed class PipelineBuilder<TResult> : PipelineBuilderBase
+{
+    private readonly List<Func<PipelineComponent, PipelineComponent>> _componentFactories = [];
+    private readonly List<StrategyType> _strategyTypes = [];
 
     /// <summary>
     /// Adds a non-generic strategy (e.g., Timeout, RateLimiter) to the typed pipeline.
     /// </summary>
     public PipelineBuilder<TResult> AddStrategy(Strategy strategy)
     {
+        ThrowIfBuilt();
         ArgumentNullException.ThrowIfNull(strategy);
         _componentFactories.Add(next => new StrategyComponent(strategy, next));
         _strategyTypes.Add(StrategyType.Unknown);
@@ -166,6 +195,7 @@ public sealed class PipelineBuilder<TResult>
 
     internal PipelineBuilder<TResult> AddStrategy(Strategy strategy, StrategyType type)
     {
+        ThrowIfBuilt();
         ArgumentNullException.ThrowIfNull(strategy);
         _componentFactories.Add(next => new StrategyComponent(strategy, next));
         _strategyTypes.Add(type);
@@ -177,6 +207,7 @@ public sealed class PipelineBuilder<TResult>
     /// </summary>
     public PipelineBuilder<TResult> AddStrategy(Strategy<TResult> strategy)
     {
+        ThrowIfBuilt();
         ArgumentNullException.ThrowIfNull(strategy);
         _componentFactories.Add(next => new TypedStrategyComponent<TResult>(strategy, next));
         _strategyTypes.Add(StrategyType.Unknown);
@@ -185,6 +216,7 @@ public sealed class PipelineBuilder<TResult>
 
     internal PipelineBuilder<TResult> AddStrategy(Strategy<TResult> strategy, StrategyType type)
     {
+        ThrowIfBuilt();
         ArgumentNullException.ThrowIfNull(strategy);
         _componentFactories.Add(next => new TypedStrategyComponent<TResult>(strategy, next));
         _strategyTypes.Add(type);
@@ -198,6 +230,7 @@ public sealed class PipelineBuilder<TResult>
         string name,
         Func<ResilienceContext, Func<ResilienceContext, ValueTask<Outcome<TResult>>>, ValueTask<Outcome<TResult>>> handler)
     {
+        ThrowIfBuilt();
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(handler);
         _componentFactories.Add(next =>
@@ -211,6 +244,7 @@ public sealed class PipelineBuilder<TResult>
     /// </summary>
     public PipelineBuilder<TResult> AddPipeline(Pipeline<TResult> pipeline)
     {
+        ThrowIfBuilt();
         ArgumentNullException.ThrowIfNull(pipeline);
         var outerComponent = pipeline.Component;
         _componentFactories.Add(next => new DelegatingComponent(outerComponent, next));
@@ -223,6 +257,7 @@ public sealed class PipelineBuilder<TResult>
     /// </summary>
     public PipelineBuilder<TResult> AddPipeline(Pipeline pipeline)
     {
+        ThrowIfBuilt();
         ArgumentNullException.ThrowIfNull(pipeline);
         var outerComponent = pipeline.Component;
         _componentFactories.Add(next => new DelegatingComponent(outerComponent, next));
@@ -231,10 +266,14 @@ public sealed class PipelineBuilder<TResult>
     }
 
     /// <summary>
-    /// Builds the pipeline.
+    /// Builds the pipeline. The builder should not be used after calling this method —
+    /// doing so throws <see cref="InvalidOperationException"/>.
     /// </summary>
     public Pipeline<TResult> Build()
     {
+        ThrowIfBuilt();
+        Built = true;
+
         if (_componentFactories.Count == 0)
         {
             return Pipeline<TResult>.Empty;
@@ -242,8 +281,7 @@ public sealed class PipelineBuilder<TResult>
 
         if (!SuppressOrderingWarnings && _strategyTypes.Count >= 2)
         {
-            var warnings = OrderingValidator.Validate(_strategyTypes);
-            EmitWarnings(warnings);
+            ApplyOrderingValidation(OrderingValidator.Validate(_strategyTypes));
         }
 
         var component = PipelineComponent.Empty;
@@ -253,21 +291,6 @@ public sealed class PipelineBuilder<TResult>
         }
 
         return new Pipeline<TResult>(component);
-    }
-
-    private void EmitWarnings(List<string> warnings)
-    {
-        foreach (var warning in warnings)
-        {
-            if (OnValidationWarning is not null)
-            {
-                OnValidationWarning(warning);
-            }
-            else
-            {
-                System.Diagnostics.Debug.WriteLine($"[Resilion] Ordering warning: {warning}");
-            }
-        }
     }
 }
 

@@ -1,3 +1,4 @@
+using Resilion.Internal;
 using Xunit;
 
 namespace Resilion.Tests;
@@ -370,6 +371,14 @@ public class PipelineTests
             _log.Add($"{_name}:after");
             return outcome;
         }
+
+        public override void Dispose() => _log.Add($"{_name}:disposed");
+
+        public override ValueTask DisposeAsync()
+        {
+            _log.Add($"{_name}:disposedAsync");
+            return default;
+        }
     }
 
     /// <summary>A no-op strategy that passes through to the next component.</summary>
@@ -414,5 +423,236 @@ public class PipelineTests
 
             return outcome;
         }
+    }
+}
+
+/// <summary>
+/// Guards against using a builder after <c>Build()</c> has already been called on it —
+/// previously silent (strategies added after Build() were just lost), now throws.
+/// </summary>
+public class PipelineBuilderPostBuildGuardTests
+{
+    [Fact]
+    public void NonGeneric_AddStrategyAfterBuild_Throws()
+    {
+        var builder = new PipelineBuilder();
+        builder.AddRetry();
+        builder.Build();
+
+        Assert.Throws<InvalidOperationException>(() => builder.AddRetry());
+    }
+
+    [Fact]
+    public void NonGeneric_AddPipelineAfterBuild_Throws()
+    {
+        var builder = new PipelineBuilder();
+        builder.Build();
+
+        Assert.Throws<InvalidOperationException>(() => builder.AddPipeline(Pipeline.Empty));
+    }
+
+    [Fact]
+    public void NonGeneric_BuildTwice_Throws()
+    {
+        var builder = new PipelineBuilder();
+        builder.Build();
+
+        Assert.Throws<InvalidOperationException>(() => builder.Build());
+    }
+
+    [Fact]
+    public void Typed_AddStrategyAfterBuild_Throws()
+    {
+        var builder = new PipelineBuilder<string>();
+        builder.AddRetry();
+        builder.Build();
+
+        Assert.Throws<InvalidOperationException>(() => builder.AddRetry());
+    }
+
+    [Fact]
+    public void Typed_AddDelegateStrategyAfterBuild_Throws()
+    {
+        var builder = new PipelineBuilder<string>();
+        builder.Build();
+
+        Assert.Throws<InvalidOperationException>(() =>
+            builder.AddStrategy("custom", (ctx, next) => next(ctx)));
+    }
+
+    [Fact]
+    public void Typed_BuildTwice_Throws()
+    {
+        var builder = new PipelineBuilder<string>();
+        builder.Build();
+
+        Assert.Throws<InvalidOperationException>(() => builder.Build());
+    }
+}
+
+/// <summary>
+/// <see cref="TypedStrategyComponent{TStrategyResult}"/> silently skips a typed strategy when
+/// executed with a mismatched result type — this exercises that path directly (via
+/// <c>InternalsVisibleTo</c>) and verifies it now at least warns via <c>Debug.WriteLine</c>.
+/// </summary>
+public class TypedStrategyComponentMismatchTests
+{
+    private sealed class PassthroughStringStrategy : Strategy<string>
+    {
+        public bool WasCalled { get; private set; }
+
+        protected internal override ValueTask<Outcome<string>> ExecuteAsync(
+            Func<ResilienceContext, ValueTask<Outcome<string>>> callback,
+            ResilienceContext context)
+        {
+            WasCalled = true;
+            return callback(context);
+        }
+    }
+
+    private sealed class RecordingTraceListener : System.Diagnostics.TraceListener
+    {
+        public List<string> Messages { get; } = [];
+        public override void Write(string? message) { }
+        public override void WriteLine(string? message) => Messages.Add(message ?? string.Empty);
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_TypeMismatch_SkipsStrategyAndWarns()
+    {
+        var strategy = new PassthroughStringStrategy();
+        var component = new TypedStrategyComponent<string>(strategy, PipelineComponent.Empty);
+
+        var listener = new RecordingTraceListener();
+        System.Diagnostics.Trace.Listeners.Add(listener);
+        try
+        {
+            // Executed with TResult = int, but the strategy is Strategy<string> — mismatch.
+            var outcome = await component.ExecuteAsync<int>(
+                ctx => new ValueTask<Outcome<int>>(Outcome<int>.FromResult(42)),
+                ResilienceContextPool.Shared.Rent());
+
+            // Skipped, not applied — the callback's result passes through untouched.
+            Assert.Equal(42, outcome.Result);
+            Assert.False(strategy.WasCalled);
+        }
+        finally
+        {
+            System.Diagnostics.Trace.Listeners.Remove(listener);
+        }
+
+#if DEBUG
+        Assert.Contains(listener.Messages, m => m.Contains("was skipped, not applied"));
+#endif
+    }
+}
+
+/// <summary>
+/// <c>IAsyncDisposable</c> on <see cref="Pipeline"/> — enables <c>await using</c> and walks the
+/// component chain asynchronously, calling each strategy's <c>DisposeAsync()</c>.
+/// </summary>
+public class PipelineAsyncDisposableTests
+{
+    private sealed class DisposeTrackingStrategy : Strategy
+    {
+        private readonly List<string> _log;
+        private readonly string _name;
+
+        public DisposeTrackingStrategy(List<string> log, string name)
+        {
+            _log = log;
+            _name = name;
+        }
+
+        protected internal override ValueTask<Outcome<TResult>> ExecuteAsync<TResult>(
+            Func<ResilienceContext, ValueTask<Outcome<TResult>>> callback,
+            ResilienceContext context)
+            => callback(context);
+
+        public override ValueTask DisposeAsync()
+        {
+            _log.Add($"{_name}:disposedAsync");
+            return default;
+        }
+    }
+
+    [Fact]
+    public async Task AwaitUsing_NonGenericPipeline_CallsDisposeAsyncOnEachStrategy()
+    {
+        var log = new List<string>();
+
+        await using (var pipeline = Pipeline.Create(b => b
+            .AddStrategy(new DisposeTrackingStrategy(log, "Outer"))
+            .AddStrategy(new DisposeTrackingStrategy(log, "Inner"))))
+        {
+            await pipeline.ExecuteAsync(static ct => new ValueTask<string>("ok"));
+        }
+
+        Assert.Equal(["Outer:disposedAsync", "Inner:disposedAsync"], log);
+    }
+
+    private sealed class DisposeTrackingTypedStrategy : Strategy<string>
+    {
+        private readonly List<string> _log;
+        private readonly string _name;
+
+        public DisposeTrackingTypedStrategy(List<string> log, string name)
+        {
+            _log = log;
+            _name = name;
+        }
+
+        protected internal override ValueTask<Outcome<string>> ExecuteAsync(
+            Func<ResilienceContext, ValueTask<Outcome<string>>> callback,
+            ResilienceContext context)
+            => callback(context);
+
+        public override ValueTask DisposeAsync()
+        {
+            _log.Add($"{_name}:disposedAsync");
+            return default;
+        }
+    }
+
+    [Fact]
+    public async Task AwaitUsing_TypedPipeline_CallsDisposeAsyncOnEachStrategy()
+    {
+        var log = new List<string>();
+
+        await using (var pipeline = Pipeline.Create<string>(b =>
+            b.AddStrategy(new DisposeTrackingTypedStrategy(log, "Only"))))
+        {
+            await pipeline.ExecuteAsync(static ct => new ValueTask<string>("ok"));
+        }
+
+        Assert.Equal(["Only:disposedAsync"], log);
+    }
+
+    private sealed class SyncOnlyDisposeStrategy : Strategy
+    {
+        private readonly List<string> _log;
+
+        public SyncOnlyDisposeStrategy(List<string> log) => _log = log;
+
+        protected internal override ValueTask<Outcome<TResult>> ExecuteAsync<TResult>(
+            Func<ResilienceContext, ValueTask<Outcome<TResult>>> callback,
+            ResilienceContext context)
+            => callback(context);
+
+        public override void Dispose() => _log.Add("SyncOnly:disposed");
+    }
+
+    [Fact]
+    public async Task DisposeAsync_DefaultImplementation_FallsBackToSyncDispose()
+    {
+        // A strategy that only overrides the sync Dispose() — the base DisposeAsync() default
+        // must still call it, so custom strategies written before IAsyncDisposable existed
+        // keep working with `await using`.
+        var log = new List<string>();
+        var pipeline = Pipeline.Create(b => b.AddStrategy(new SyncOnlyDisposeStrategy(log)));
+
+        await pipeline.DisposeAsync();
+
+        Assert.Contains("SyncOnly:disposed", log);
     }
 }

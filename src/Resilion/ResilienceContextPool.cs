@@ -17,10 +17,28 @@ public sealed class ResilienceContextPool
 
     // Cap the pool size to avoid unbounded memory growth under burst traffic.
     // 256 is generous — most applications use far fewer concurrent pipeline executions.
-    private const int MaxPoolSize = 256;
+    private readonly int _maxPoolSize;
 
     // Tracks pool count with Interlocked to avoid O(n) ConcurrentBag.Count enumeration.
     private int _count;
+
+    /// <summary>
+    /// Creates a new pool with the specified maximum size.
+    /// </summary>
+    /// <param name="maxPoolSize">
+    /// The maximum number of contexts retained in the pool. Defaults to 256. Excess returned
+    /// contexts beyond this cap are discarded rather than pooled.
+    /// </param>
+    public ResilienceContextPool(int maxPoolSize = 256)
+    {
+        if (maxPoolSize < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(maxPoolSize), maxPoolSize,
+                "maxPoolSize must be >= 1.");
+        }
+
+        _maxPoolSize = maxPoolSize;
+    }
 
     /// <summary>
     /// Gets the shared default pool instance. Use this unless you have a specific reason
@@ -59,7 +77,7 @@ public sealed class ResilienceContextPool
         context.Reset();
 
         // Don't let the pool grow without bound. Use Interlocked counter to avoid O(n) ConcurrentBag.Count.
-        if (Interlocked.Increment(ref _count) <= MaxPoolSize)
+        if (Interlocked.Increment(ref _count) <= _maxPoolSize)
         {
             _pool.Add(context);
         }
