@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>Resilion</PackageId>
+    <RootNamespace>Resilion</RootNamespace>
+    <AssemblyName>Resilion</AssemblyName>
+    <Description>Runtime resilience library for .NET. Retry, circuit breaker, timeout, fallback, hedging, pipeline composition. Zero external dependencies.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Resilion.Tests" />
+    <InternalsVisibleTo Include="Resilion.Benchmarks" />
+    <InternalsVisibleTo Include="Resilion.RateLimiting" />
+    <InternalsVisibleTo Include="Resilion.Extensions" />
+  </ItemGroup>
+
+</Project>
