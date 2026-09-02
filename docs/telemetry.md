@@ -20,7 +20,13 @@ All metrics are on the `"Resilion"` meter.
 ### dotnet-counters (CLI)
 
 ```bash
-dotnet counters monitor --counters Resilion
+dotnet counters monitor --name <process-name> --counters Resilion
+```
+
+Or monitor by process ID:
+
+```bash
+dotnet counters monitor --process-id <pid> --counters Resilion
 ```
 
 ### OpenTelemetry

@@ -247,44 +247,6 @@ Use `ObjectPool<CancellationTokenSource>` with a custom policy that calls `TryRe
 
 ---
 
-### 6. Pipeline Ordering Validation
-
-**Type:** Feature — Developer Experience
-
-**Why**
-
-Strategy ordering dramatically affects behavior. Common misorderings (Retry outside CircuitBreaker, missing per-attempt timeout) are a real source of bugs. Polly v8 has no validation.
-
-**Design**
-
-`Build()` performs heuristic validation and emits diagnostic warnings for patterns that are usually wrong:
-- Retry outside CircuitBreaker (retries bypass the breaker)
-- Fallback not outermost (unusual)
-- Multiple Timeout strategies without one being outermost
-- Hedging and Retry both present (may cause excessive load)
-
-Warnings, not errors. Suppressible via `builder.SuppressOrderingWarnings = true`.
-
----
-
-### 7. Benchmarks vs Polly
-
-**Type:** Infrastructure — Performance Validation
-
-**Why**
-
-Resilion claims to be high-performance. Without benchmarks, that's marketing.
-
-**Design**
-
-The benchmark project (`benchmarks/Resilion.Benchmarks/`) already exists. Add:
-- Pipeline overhead (no-op vs direct call)
-- Per-strategy happy path (no trigger)
-- Allocation profile (`[MemoryDiagnoser]`)
-- Polly.Core head-to-head comparison
-- Composition depth scaling (1, 2, 3, 5 strategies)
-
----
 
 ### 11. Hedging: Task.WhenAny Memory Leak
 

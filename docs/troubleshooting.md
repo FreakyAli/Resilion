@@ -73,19 +73,16 @@ To force-close: use `CircuitBreakerManualControl.ResetAsync()`.
 
 **Cause**: Pipeline configurations registered via `AddResiliencePipeline` need to be applied to the registry before accessing it.
 
-**Fix**: When you resolve `ResiliencePipelineRegistry<string>` from the service provider, all registered `IPipelineConfigurator` services are automatically applied (as of the latest version). If you need explicit control, call `ResilionServiceCollectionExtensions.BuildRegistry(serviceProvider)` to ensure all configurators are processed:
+**Fix**: When you resolve `ResiliencePipelineRegistry<string>` from the service provider, all registered `IPipelineConfigurator` services are automatically applied:
 
 ```csharp
 var services = new ServiceCollection();
 services.AddResiliencePipeline("my-pipeline", b => b.AddRetry(...));
 var sp = services.BuildServiceProvider();
 
-// Automatic: registry is built and configured when resolved
+// Registry is built and configured when resolved
 var registry = sp.GetRequiredService<ResiliencePipelineRegistry<string>>();
 var pipeline = registry.GetPipeline("my-pipeline");  // Works!
-
-// Or explicit (if needed):
-var builtRegistry = ResilionServiceCollectionExtensions.BuildRegistry(sp);
 ```
 
 ---

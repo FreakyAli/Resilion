@@ -9,6 +9,9 @@ on:
 env:
   DOTNET_VERSION: '9.0.x'
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest

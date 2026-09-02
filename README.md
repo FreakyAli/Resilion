@@ -14,7 +14,6 @@ using Resilion;
 
 // Create a resilience pipeline with multiple strategies
 var pipeline = Pipeline.Create(b => b
-    .AddRateLimiter(...)        // 1. Shed load first
     .AddTimeout(TimeSpan.FromSeconds(30))
     .AddRetry(new RetryStrategyOptions
     {
@@ -254,6 +253,7 @@ Control request throughput to prevent overload.
 
 ```csharp
 using Resilion.RateLimiting;
+using System.Threading.RateLimiting;
 
 var limiter = new ConcurrencyLimiter(new ConcurrencyLimiterOptions
 {
@@ -292,7 +292,7 @@ var pipeline = Pipeline.Create<string>(b => b.AddHedging(
 **Hedging Delay:**
 - `TimeSpan.Zero` — Fire all requests in parallel
 - `TimeSpan.FromSeconds(2)` — Wait 2 seconds before sending next request
-- `InfiniteTimeSpan` — Sequential requests (no hedging, just fallback)
+- `System.Threading.Timeout.InfiniteTimeSpan` — Sequential requests (no hedging, just fallback)
 
 **Use when:**
 - Reducing tail latency in latency-sensitive systems
@@ -306,10 +306,10 @@ Strategies execute **outermost to innermost**. The recommended order is:
 ```csharp
 Pipeline.Create(b => b
     .AddRateLimiter(...)        // 1. Shed load FIRST
-    .AddTimeout(30s)            // 2. Total timeout across all retries
+    .AddTimeout(TimeSpan.FromSeconds(30))            // 2. Total timeout across all retries
     .AddRetry(...)              // 3. Retry failures
     .AddCircuitBreaker(...)     // 4. Track per-attempt success/failure
-    .AddTimeout(5s));           // 5. Per-attempt timeout
+    .AddTimeout(TimeSpan.FromSeconds(5)));           // 5. Per-attempt timeout
 ```
 
 **Why this order?**
@@ -369,7 +369,7 @@ Resilion is built for modern .NET with full support for:
 
 ## Project Structure
 
-```
+```text
 src/
   Resilion/                   Core library (zero dependencies)
   Resilion.Extensions/        DI, telemetry, structured logging

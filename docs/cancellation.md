@@ -4,9 +4,9 @@ How `CancellationToken` flows through Resilion pipelines and how each strategy i
 
 ## The rule
 
-**If the user's original `CancellationToken` is canceled, `OperationCanceledException` propagates immediately. It is never retried, never counted as a circuit breaker failure, never caught by any strategy by default.**
+**If the user's original `CancellationToken` is canceled after passing pre-execution strategy gates (e.g., circuit breaker state check), `OperationCanceledException` propagates immediately. It is never retried, never counted as a circuit breaker failure, never caught by any strategy by default. However, strategies that reject before execution (e.g., open circuit breaker) return their own exceptions (e.g., `CircuitBrokenException`) instead.**
 
-This is the single most important cancellation guarantee.
+This is the single most important cancellation guarantee for operations that reach the inner callback.
 
 ## Token flow
 
@@ -62,7 +62,7 @@ Each Timeout strategy creates a linked `CancellationTokenSource`. The inner dele
 ### Hedging
 - Each attempt gets its own linked CTS
 - When one attempt wins, all other CTS instances cancel
-- All cancelled tasks are awaited for resource cleanup
+- Cancelled tasks are given a bounded cleanup wait of 5 seconds; tasks that do not cooperate with cancellation may continue running
 - User cancellation cancels all attempts simultaneously
 
 ## Timeout vs user cancellation

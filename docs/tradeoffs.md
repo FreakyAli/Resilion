@@ -32,11 +32,11 @@ When pipelines are composed via `AddPipeline()`, the `DelegatingComponent` does 
 
 ## ResilienceContextPool cap is approximate
 
-The pool size check (`_pool.Count < MaxPoolSize`) followed by `_pool.Add(context)` is a TOCTOU race — multiple threads can pass the check simultaneously and add, slightly exceeding the 256 cap.
+The pool size check (`_pool.Count < MaxPoolSize`) followed by `_pool.Add(context)` is a TOCTOU race — concurrent `Return()` calls can overshoot `MaxPoolSize` unboundedly. The excess contexts are held in the `ConcurrentBag` and are never collected — `Rent` via `_pool.TryTake` is the only removal path.
 
-**Why it's acceptable:** The cap is a heuristic, not a hard limit. Enforcing exactly 256 would require a lock or `Interlocked` on every return for zero practical benefit. Under burst traffic the pool might briefly hold 260-270 items; the excess is collected on the next GC. The alternative — `ConcurrentBag.Count` with exact enforcement — is worse because `Count` itself is expensive (see future-plans #25).
+**Why it's acceptable:** The cap is a heuristic, not a hard limit. Enforcing exactly 256 would require a lock on every return for zero practical benefit. Under burst traffic the pool might grow beyond the target, but this is transient and trades memory for lock-free concurrent access. The contexts are small (~200 bytes) and in steady state the pool converges to size. The alternative — `ConcurrentBag.Count` with exact enforcement — is worse because `Count` itself is expensive (see future-plans #25).
 
-**Watch for:** Don't rely on the pool being exactly 256 items or fewer. It's a soft cap.
+**Watch for:** Don't rely on the pool being exactly 256 items or fewer. It's a soft cap. Under sustained traffic, the pool size may exceed the target.
 
 **Location:** [ResilienceContextPool.cs](../src/Resilion/ResilienceContextPool.cs) — `Return()`
 
