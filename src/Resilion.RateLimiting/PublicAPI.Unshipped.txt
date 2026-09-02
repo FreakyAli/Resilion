@@ -13,8 +13,8 @@ RateLimitRejectedException
 RateLimitRejectedException.RetryAfter.get -> System.TimeSpan?
 
 RateLimiterExtensions
-RateLimiterExtensions.AddRateLimiter(Resilion.PipelineBuilder!, RateLimiterStrategyOptions!) -> Resilion.PipelineBuilder!
-RateLimiterExtensions.AddRateLimiter<TResult>(Resilion.PipelineBuilder<TResult>!, RateLimiterStrategyOptions!) -> Resilion.PipelineBuilder<TResult>!
+RateLimiterExtensions.AddRateLimiter(this Resilion.PipelineBuilder! builder, RateLimiterStrategyOptions! options) -> Resilion.PipelineBuilder!
+RateLimiterExtensions.AddRateLimiter<TResult>(this Resilion.PipelineBuilder<TResult>! builder, RateLimiterStrategyOptions! options) -> Resilion.PipelineBuilder<TResult>!
 
 RateLimiterStrategyOptions
 RateLimiterStrategyOptions.RateLimiter.get -> System.Threading.RateLimiting.RateLimiter?

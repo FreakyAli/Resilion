@@ -125,4 +125,54 @@ public class CompositionTests
 
         Assert.Equal(-1, result);
     }
+
+    [Fact]
+    public async Task AddPipeline_DisposesParentChainButNotComposedPipeline()
+    {
+        // Track disposal of strategies in composed pipeline
+        var innerDisposed = false;
+        var innerStrategy = new DisposableStrategy(() => { innerDisposed = true; });
+        var innerPipeline = Pipeline.Create(b => b.AddStrategy(innerStrategy));
+
+        // Track disposal of strategies in outer pipeline
+        var outerDisposed = false;
+        var outerStrategy = new DisposableStrategy(() => { outerDisposed = true; });
+
+        var composed = Pipeline.Create(b => b
+            .AddPipeline(innerPipeline)
+            .AddStrategy(outerStrategy));
+
+        // Before disposal, nothing is disposed
+        Assert.False(innerDisposed);
+        Assert.False(outerDisposed);
+
+        // Dispose the composed pipeline
+        composed.Dispose();
+
+        // The outer strategy should be disposed (parent chain)
+        Assert.True(outerDisposed, "Outer strategy should be disposed");
+
+        // The inner composed pipeline should NOT be disposed — it's shared and may be used elsewhere
+        Assert.False(innerDisposed, "Composed inner pipeline should not be disposed (it's shared)");
+    }
+
+    /// <summary>
+    /// Helper strategy that calls a callback on disposal.
+    /// </summary>
+    private sealed class DisposableStrategy : Strategy
+    {
+        private readonly Action _onDispose;
+
+        public DisposableStrategy(Action onDispose) => _onDispose = onDispose;
+
+        protected internal override ValueTask<Outcome<TResult>> ExecuteAsync<TResult>(
+            Func<ResilienceContext, ValueTask<Outcome<TResult>>> callback,
+            ResilienceContext context) => callback(context);
+
+        protected internal override Outcome<TResult> Execute<TResult>(
+            Func<ResilienceContext, Outcome<TResult>> callback,
+            ResilienceContext context) => callback(context);
+
+        public override void Dispose() => _onDispose();
+    }
 }

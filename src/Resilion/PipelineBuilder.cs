@@ -354,6 +354,14 @@ internal sealed class DelegatingComponent : PipelineComponent
     public override void Dispose()
     {
         // Don't dispose inner — it may be shared via AddPipeline.
-        // Don't dispose next — the parent chain owns it.
+        // Dispose next — it's part of this pipeline's chain and must be cleaned up.
+        _next.Dispose();
+    }
+
+    public override async ValueTask DisposeAsync()
+    {
+        // Don't dispose inner — it may be shared via AddPipeline.
+        // Dispose next asynchronously — it's part of this pipeline's chain and must be cleaned up.
+        await _next.DisposeAsync().ConfigureAwait(false);
     }
 }

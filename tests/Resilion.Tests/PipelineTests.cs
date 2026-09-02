@@ -577,12 +577,13 @@ public class TypedStrategyComponentMismatchTests
 
         var listener = new RecordingTraceListener();
         System.Diagnostics.Trace.Listeners.Add(listener);
+        var context = ResilienceContextPool.Shared.Rent();
         try
         {
             // Executed with TResult = int, but the strategy is Strategy<string> — mismatch.
             var outcome = await component.ExecuteAsync<int>(
                 ctx => new ValueTask<Outcome<int>>(Outcome<int>.FromResult(42)),
-                ResilienceContextPool.Shared.Rent());
+                context);
 
             // Skipped, not applied — the callback's result passes through untouched.
             Assert.Equal(42, outcome.Result);
@@ -591,6 +592,7 @@ public class TypedStrategyComponentMismatchTests
         finally
         {
             System.Diagnostics.Trace.Listeners.Remove(listener);
+            ResilienceContextPool.Shared.Return(context);
         }
 
 #if DEBUG
