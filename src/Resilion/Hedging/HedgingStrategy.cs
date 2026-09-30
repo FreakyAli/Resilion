@@ -42,8 +42,12 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
 
             for (var attemptIndex = 1; attemptIndex < _options.MaxHedgedAttempts; attemptIndex++)
             {
+                // Resolved per attempt: the delay selects the mode, so a generator can make one
+                // attempt sequential and the next parallel. See HedgingDelayGenerator's remarks.
+                var hedgingDelay = ResolveHedgingDelay(attemptIndex, context);
+
                 // Wait for the hedging delay, or for the primary/earlier attempt to complete.
-                if (_options.HedgingDelay == System.Threading.Timeout.InfiniteTimeSpan)
+                if (hedgingDelay == System.Threading.Timeout.InfiniteTimeSpan)
                 {
                     // Sequential mode: wait for the current attempt to complete before launching next.
                     var completed = await attempts[^1].ConfigureAwait(false);
@@ -53,10 +57,10 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
                         return completed;
                     }
                 }
-                else if (_options.HedgingDelay > TimeSpan.Zero)
+                else if (hedgingDelay > TimeSpan.Zero)
                 {
                     // Latency mode: wait for the delay, but also check if any attempt completes early.
-                    var delayTask = Task.Delay(_options.HedgingDelay, _timeProvider, userToken);
+                    var delayTask = Task.Delay(hedgingDelay, _timeProvider, userToken);
                     var whenAnyTask = Task.WhenAny(attempts);
                     var winner = await Task.WhenAny(whenAnyTask, delayTask).ConfigureAwait(false);
 
@@ -151,11 +155,14 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
         // Hedging's entire value proposition is running attempts concurrently. The sync path
         // can only ever run sequentially — silently degrading parallel/latency hedging to
         // sequential would give the caller zero indication their hedging isn't actually hedging.
-        if (_options.HedgingDelay != System.Threading.Timeout.InfiniteTimeSpan)
+        if (_options.HedgingDelayGenerator is not null
+            || _options.HedgingDelay != System.Threading.Timeout.InfiniteTimeSpan)
         {
             throw new InvalidOperationException(
-                "Parallel and latency hedging modes require async execution. Use ExecuteAsync(), " +
-                "or set HedgingDelay to Timeout.InfiniteTimeSpan for sequential mode.");
+                "Parallel and latency hedging modes require async execution, and a " +
+                "HedgingDelayGenerator cannot be evaluated on the synchronous path. Use " +
+                "ExecuteAsync(), or set HedgingDelay to Timeout.InfiniteTimeSpan with no " +
+                "generator for sequential mode.");
         }
 
         using var activity = StrategyActivity.Start("Hedging", context);
@@ -206,6 +213,29 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
 
         StrategyActivity.SetOutcome(activity, "hedging_exhausted");
         return lastOutcome;
+    }
+
+    /// <summary>
+    /// Resolves the delay before launching <paramref name="attemptIndex"/>, preferring the
+    /// generator over the static value. A negative result other than <c>InfiniteTimeSpan</c> is
+    /// clamped to zero rather than throwing mid-execution.
+    /// </summary>
+    private TimeSpan ResolveHedgingDelay(int attemptIndex, ResilienceContext context)
+    {
+        if (_options.HedgingDelayGenerator is null)
+        {
+            return _options.HedgingDelay;
+        }
+
+        var delay = _options.HedgingDelayGenerator(
+            new HedgingDelayGeneratorArgs(attemptIndex, context));
+
+        if (delay == System.Threading.Timeout.InfiniteTimeSpan)
+        {
+            return delay;
+        }
+
+        return delay < TimeSpan.Zero ? TimeSpan.Zero : delay;
     }
 
     private void LaunchAttempt(

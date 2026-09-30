@@ -537,4 +537,161 @@ public class HedgingStrategyTests
         Assert.True(sw.Elapsed < TimeSpan.FromSeconds(15),
             $"Expected bounded cleanup, took {sw.Elapsed}.");
     }
+
+    // ──────────────────────────────────────────────────────────────────
+    // HedgingDelayGenerator — future-plans #12
+    // ──────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task Async_HedgingDelayGenerator_OverridesStaticDelay()
+    {
+        var fakeTime = new FakeTimeProvider();
+        var sends = 0;
+        var pipeline = Pipeline.Create<string>(b =>
+        {
+            b.TimeProvider = fakeTime;
+            b.AddHedging(new HedgingStrategyOptions<string>
+            {
+                MaxHedgedAttempts = 2,
+                // Would be sequential; the generator makes it parallel instead.
+                HedgingDelay = System.Threading.Timeout.InfiniteTimeSpan,
+                HedgingDelayGenerator = _ => TimeSpan.Zero,
+            });
+        });
+
+        await pipeline.ExecuteAsync(ct =>
+        {
+            Interlocked.Increment(ref sends);
+            return new ValueTask<string>("ok");
+        });
+
+        Assert.Equal(2, sends);
+    }
+
+    [Fact]
+    public async Task Async_HedgingDelayGenerator_ReceivesAttemptNumberOfTheAttemptBeingLaunched()
+    {
+        var observed = new List<int>();
+        var pipeline = Pipeline.Create<string>(b => b.AddHedging(new HedgingStrategyOptions<string>
+        {
+            MaxHedgedAttempts = 3,
+            HedgingDelayGenerator = args =>
+            {
+                lock (observed) { observed.Add(args.AttemptNumber); }
+                return TimeSpan.Zero;
+            },
+        }));
+
+        await pipeline.ExecuteAsync(ct => new ValueTask<string>("ok"));
+
+        // 0 is the primary, which is never "launched as a hedge", so the first hedge is 1.
+        Assert.Equal([1, 2], observed);
+    }
+
+    [Fact]
+    public async Task Async_HedgingDelayGenerator_ReceivesExecutionContext()
+    {
+        ResilienceContext? seen = null;
+        var pipeline = Pipeline.Create<string>(b =>
+        {
+            b.Name = "generator-context";
+            b.AddHedging(new HedgingStrategyOptions<string>
+            {
+                MaxHedgedAttempts = 2,
+                HedgingDelayGenerator = args => { seen = args.Context; return TimeSpan.Zero; },
+            });
+        });
+
+        await pipeline.ExecuteAsync(ct => new ValueTask<string>("ok"));
+
+        Assert.NotNull(seen);
+    }
+
+    [Fact]
+    public async Task Async_HedgingDelayGenerator_PerAttemptModeSelection()
+    {
+        // Attempt 1 parallel, attempt 2 sequential: the generator picks the mode per attempt.
+        var fakeTime = new FakeTimeProvider();
+        var sends = 0;
+        var pipeline = Pipeline.Create<string>(b =>
+        {
+            b.TimeProvider = fakeTime;
+            b.AddHedging(new HedgingStrategyOptions<string>
+            {
+                MaxHedgedAttempts = 3,
+                HedgingDelayGenerator = args => args.AttemptNumber == 1
+                    ? TimeSpan.Zero
+                    : System.Threading.Timeout.InfiniteTimeSpan,
+            });
+        });
+
+        var result = await pipeline.ExecuteAsync(ct =>
+        {
+            Interlocked.Increment(ref sends);
+            return new ValueTask<string>("ok");
+        });
+
+        Assert.Equal("ok", result);
+        // Two launched immediately; the third waits on its predecessor, which succeeds, so the
+        // loop returns without launching it.
+        Assert.Equal(2, sends);
+    }
+
+    [Fact]
+    public async Task Async_HedgingDelayGenerator_NegativeValue_ClampedToZero()
+    {
+        var sends = 0;
+        var pipeline = Pipeline.Create<string>(b => b.AddHedging(new HedgingStrategyOptions<string>
+        {
+            MaxHedgedAttempts = 2,
+            HedgingDelayGenerator = _ => TimeSpan.FromSeconds(-5),
+        }));
+
+        await pipeline.ExecuteAsync(ct =>
+        {
+            Interlocked.Increment(ref sends);
+            return new ValueTask<string>("ok");
+        });
+
+        // Clamped to zero, so it behaves as parallel rather than throwing.
+        Assert.Equal(2, sends);
+    }
+
+    [Fact]
+    public void Sync_HedgingDelayGeneratorSet_Throws()
+    {
+        var pipeline = Pipeline.Create<string>(b => b.AddHedging(new HedgingStrategyOptions<string>
+        {
+            MaxHedgedAttempts = 2,
+            HedgingDelay = System.Threading.Timeout.InfiniteTimeSpan,
+            HedgingDelayGenerator = _ => TimeSpan.Zero,
+        }));
+
+        var ex = Assert.Throws<InvalidOperationException>(() => pipeline.Execute(ct => "ok"));
+
+        Assert.Contains("HedgingDelayGenerator", ex.Message);
+    }
+
+    [Fact]
+    public void Options_HedgingDelayGeneratorSet_SkipsStaticDelayValidation()
+    {
+        // A negative static delay is normally rejected, but is ignored when a generator is set.
+        var pipeline = Pipeline.Create<string>(b => b.AddHedging(new HedgingStrategyOptions<string>
+        {
+            MaxHedgedAttempts = 2,
+            HedgingDelay = TimeSpan.FromSeconds(-1),
+            HedgingDelayGenerator = _ => TimeSpan.Zero,
+        }));
+
+        Assert.NotNull(pipeline);
+    }
+
+    [Fact]
+    public void Options_NegativeStaticDelayWithoutGenerator_StillThrows()
+        => Assert.Throws<ArgumentOutOfRangeException>(() =>
+            Pipeline.Create<string>(b => b.AddHedging(new HedgingStrategyOptions<string>
+            {
+                MaxHedgedAttempts = 2,
+                HedgingDelay = TimeSpan.FromSeconds(-1),
+            })));
 }

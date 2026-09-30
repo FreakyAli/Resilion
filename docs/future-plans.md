@@ -35,10 +35,6 @@ entry without a row here — is a bug in this file; see CONTRIBUTING.md § Futur
 
 | # | Item | Priority | Type | Target | Effort | Status |
 |---|------|----------|------|--------|--------|--------|
-| 43 | PredicateBuilder&lt;T&gt; fluent API | P1 | Feature | post-1.0 | Medium | Open |
-| 12 | Hedging: HedgingDelayGenerator | P1 | Feature | post-1.0 | Low | Open |
-| 41 | Pipeline dynamic reload via IOptionsMonitor | P1 | Feature | post-1.0 | High | Open |
-| 42 | Keyed services support | P1 | Feature | post-1.0 | Medium | Open |
 | 39 | Resilion.Http — HttpClient integration | P1 | Feature | post-1.0 | High | Open |
 | 27 | Retry typed/untyped strategy duplication (4 loops) | P1 | Improvement | post-1.0 | Medium | Open |
 | 30 | FallbackAction/ResilienceEventHandler Task.Run missing token | P1 | Fix | post-1.0 | Low | Open |
@@ -48,7 +44,6 @@ entry without a row here — is a bug in this file; see CONTRIBUTING.md § Futur
 | 44 | IConfiguration binding for strategy options | P2 | Feature | unscheduled | Medium | Open |
 | 40 | Resilion.Chaos — chaos engineering | P2 | Feature | unscheduled | High | Open |
 | 11 | Hedging: O(N²) WhenAny continuation registration (needs #54) | P2 | Improvement | unscheduled | Medium | Open |
-| 10 | Resilion.Testing package | P2 | Feature | unscheduled | Low | Open |
 | 4 | Per-call delegate allocation in pipeline chain | P2 | Improvement | unscheduled | High | Open |
 | 5 | CancellationTokenSource pooling for Timeout | P2 | Improvement | unscheduled | Medium | Open |
 | 48 | Benchmark CI on PRs | P3 | Infrastructure | unscheduled | Low | Open |
@@ -63,188 +58,6 @@ _Empty._ Everything that was blocking 1.0.0 has shipped — see `## Retired item
 already claims untrue, or produces a silently wrong answer.
 
 ## P1 — Next (post-1.0)
-
-### 43. `PredicateBuilder<T>` Fluent API
-
-**Status:** Open
-**Type:** Feature
-**Target:** post-1.0
-**Verified:** 2026-09-30 — `grep -rn 'PredicateBuilder' src/ --include='*.cs'` → 0 hits.
-
-**Why**
-
-Polly provides `new PredicateBuilder<HttpResponseMessage>().Handle<HttpRequestException>().HandleResult(r => r.StatusCode == 500)`
-with implicit conversion to a predicate delegate. Resilion requires writing the full
-`Func<Outcome<T>, bool>`. For simple cases that is fine and arguably clearer; for complex predicates
-it gets verbose. Named as a gap in [comparison-with-polly.md](comparison-with-polly.md).
-
-**Design**
-
-`PredicateBuilder<TResult>` with `Handle<TException>()`, `Handle<TException>(Func<TException, bool>)`,
-`HandleInner<TException>()` (+ predicate overload), `HandleResult(Func<TResult, bool>)`,
-`HandleResult(TResult)`, `Build()`, and an implicit conversion to `Func<Outcome<TResult>, bool>`. Plus
-a non-generic `PredicateBuilder` producing `Func<Exception, bool>` for the exception-only options
-(`RetryStrategyOptions.ShouldHandle`, `CircuitBreakerStrategyOptions.ShouldHandle`) — without it,
-those are the one place the sugar doesn't reach.
-
-**Two design rules that keep it from becoming a second way to do the same thing**
-
-1. **`Build()` throws `InvalidOperationException` on an empty builder.** The default
-   "handle everything except cancellation" predicate is reached exactly one way — `ShouldHandle == null`
-   — and every options record funnels through that. A `PredicateBuilder` always produces a non-null
-   delegate, so it can never *be* the default. The only way it could become a second path is an empty
-   builder silently meaning "handle everything". Throwing closes that.
-2. **It does not inherit the cancellation carve-out.** `OutcomePredicates.DefaultShouldHandle<T>`
-   excludes `OperationCanceledException`; `new PredicateBuilder<T>().Handle<Exception>()` matches it.
-   That is correct for an explicit builder, and it must be **called out in the docs** rather than
-   discovered.
-
-Clauses combine with OR. `Build()` snapshots them into an array so the returned delegate is unaffected
-by later mutation. Deliberately **not** single-use, unlike `PipelineBuilder` — this is a
-value-producing helper and reuse is natural. Document the reasoning for the inconsistency.
-
-**Effort:** Medium. Self-contained; zero risk to the hot path.
-
----
-
-### 12. Hedging: `HedgingDelayGenerator`
-
-**Status:** Open
-**Type:** Feature
-**Target:** post-1.0
-**Verified:** 2026-09-30 — `grep -n 'HedgingDelay' src/Resilion/Hedging/HedgingStrategyOptions.cs`
-→ a static `TimeSpan` property only.
-
-**Why**
-
-The current `HedgingDelay` is a static `TimeSpan` — the same delay for every hedged attempt. Some
-scenarios benefit from dynamic delays (shorter delays for later attempts, or delays computed from
-recent latency percentiles).
-
-**Design**
-
-Add `Func<HedgingDelayGeneratorArgs, TimeSpan>? HedgingDelayGenerator` to
-`HedgingStrategyOptions<T>`. When set, `HedgingDelay` is ignored.
-
-```csharp
-public readonly record struct HedgingDelayGeneratorArgs(int AttemptNumber, ResilienceContext Context);
-```
-
-`AttemptNumber` is the 0-based index of the attempt **about to be launched** (so `1` for the first
-hedge), consistent with `HedgingActionContext.AttemptNumber` and `OnHedgingEvent<T>.AttemptNumber`.
-
-Consult it as the first statement of `ExecuteAsync`'s attempt loop and use the result at all three
-sites that currently read `_options.HedgingDelay` — the `InfiniteTimeSpan` sequential-mode check, the
-`> TimeSpan.Zero` latency-mode check, and the `Task.Delay`. **This makes mode selection per-attempt**:
-a generator can return `InfiniteTimeSpan` for one attempt and `Zero` for the next. That is the
-feature; document it. Clamp a negative non-`InfiniteTimeSpan` result to `TimeSpan.Zero` rather than
-throwing mid-execution.
-
-The sync guard must also reject a generator being set (it cannot be evaluated on the synchronous
-path), and `Validate()` must skip the static `HedgingDelay` range check when a generator is present.
-
-**Effort:** Low.
-
----
-
-### 41. Pipeline Dynamic Reload via `IOptionsMonitor`
-
-**Status:** Open
-**Type:** Feature
-**Target:** post-1.0
-**Verified:** 2026-09-30 — `grep -n 'Invalidate\|IChangeToken\|IOptionsMonitor' src/Resilion.Extensions/*.cs`
-→ 0 hits.
-
-**Why**
-
-Polly supports `context.EnableReloads<TOptions>()`, which auto-recreates pipelines when
-`IOptionsMonitor<T>` detects a configuration change. Without this, changing retry counts or timeout
-durations requires an app restart.
-
-**Design**
-
-The registry's existing shape already solves the single-use-builder problem: `GetPipeline` stores the
-`Action<PipelineBuilder>` in `_factories` and constructs a **fresh** `PipelineBuilder` inside the
-`Lazy<Pipeline>` factory. So **reload = drop the `Lazy`, keep the factory.** Invalidation is
-`_pipelines.TryRemove(key, out _)`; the next `GetPipeline` rebuilds. `_factories` is never touched, so
-the "a failed lookup doesn't poison the cache" invariant survives unchanged.
-
-New public surface on `ResiliencePipelineRegistry<TKey>`: `InvalidatePipeline(TKey)`,
-`InvalidatePipeline<TResult>(TKey)`, `TryGetPipeline<TResult>(TKey, out Pipeline<TResult>?)` (fills an
-existing asymmetry), and `Action<PipelineReplacedArgs<TKey>>? OnPipelineReplaced`. New
-`AddResiliencePipeline<TOptions>` / `<TResult, TOptions>` overloads taking a 2-arg
-`Action<PipelineBuilder, TOptions>` delegate — unambiguous against the existing 1-arg overloads.
-
-**`IChangeToken` support is not needed in the registry.** `IOptionsMonitor<T>.OnChange(listener)`
-covers the DI path, and a caller outside DI writes
-`ChangeToken.OnChange(producer, () => registry.InvalidatePipeline(key))` with zero new API.
-
-**`IPipelineProvider<TKey>` needs no change** — `GetPipeline` re-reads the dictionary on every call, so
-a consumer holding the interface gets the new pipeline automatically. That is why reload works without
-an interface break, and it makes the documented contract: **with reload enabled, resolve per call;
-never cache the `Pipeline` in a field.** (Keyed injection, #42, violates this by construction.)
-
-**In-flight executions** complete on the old pipeline — it is immutable and the executing frame holds
-a strong reference through its own stack. No tearing.
-
-**Replaced pipelines are not disposed by the registry.** It cannot know when the last in-flight
-execution finishes without ref-counting every execute path. Verified: no strategy in the repo
-overrides `Dispose`, and `DelegatingComponent.Dispose` deliberately does not dispose composed inner
-components ([tradeoffs.md](tradeoffs.md)) — so auto-disposal would be both useless today and unsafe
-once a strategy owns a resource. Hand the old pipeline to `OnPipelineReplaced` and document that the
-caller decides.
-
-**Eventual consistency:** concurrent invalidate + get can return a pipeline built from options that
-were current a few microseconds ago. Document it; do not add locking.
-
-Internally this needs an `IRegistryConfigurator` that runs **before** `IPipelineConfigurator` in
-`BuildRegistry`, and `IPipelineConfigurator.Configure` gaining an `IServiceProvider` parameter (it is
-internal, so that's free). This is what finally uses the `Microsoft.Extensions.Options` reference that
-has sat unused in `Resilion.Extensions.csproj` since the package was created.
-
-**Effort:** High.
-
----
-
-### 42. Keyed Services Support
-
-**Status:** Open
-**Type:** Feature
-**Target:** post-1.0
-**Verified:** 2026-09-30 — `grep -n 'Keyed' src/Resilion.Extensions/*.cs` → 0 hits.
-
-**Why**
-
-.NET 8 introduced keyed DI services. Polly v8.3+ supports this for direct injection of named pipelines
-without going through the registry.
-
-**Design**
-
-Add `TryAddKeyedSingleton` registrations inside the existing `AddResiliencePipeline` overloads, with
-the factory deferring to the registry. The `(TKey, Type)` composite typed store maps directly onto
-keyed DI: keyed service type `Pipeline<TResult>` + service key `name` ≡ `(name, typeof(TResult))`.
-`TryAdd*` so a duplicate call doesn't add a second descriptor — the registry already throws on
-duplicate keys at build time, which is where that error belongs.
-
-**Zero new public API.** The consumer-facing surface is `[FromKeyedServices("name")] Pipeline`, which
-is BCL API.
-
-**Two hazards:**
-
-1. **Double dispose — hard prerequisite.** A keyed *singleton* resolved from a factory is tracked and
-   disposed by the root container, **and** `ResiliencePipelineRegistry.Dispose()` disposes every
-   created pipeline. The same instance is disposed twice — harmless today, a real bug the day a
-   strategy owns a resource. **`Pipeline.Dispose`/`DisposeAsync` and the typed equivalents need a
-   `_disposed` guard** so the second call is a no-op. Keyed *transient* is not an escape: DI disposes
-   transient `IDisposable`s resolved from a scope, which would destroy the registry's cached pipeline
-   mid-flight. Singleton is the only correct lifetime.
-2. **Keyed injection defeats #41.** A keyed singleton caches the pipeline for the container's
-   lifetime, and an injected field caches it again. Neither sees an invalidation. Inherent, not
-   fixable — document it as a hard incompatibility in both the reload docs and the DI docs.
-
-**Effort:** Medium.
-
----
 
 ### 39. Resilion.Http — HttpClient Integration
 
@@ -675,50 +488,6 @@ calling `WhenAny` twice. `:143` is the cleanup timeout.
 
 ---
 
-### 10. Resilion.Testing Package
-
-**Status:** Open
-**Type:** Feature
-**Target:** unscheduled
-**Verified:** 2026-09-30 — `grep -rn 'CircuitState' src/Resilion/CircuitBreaker/CircuitBreakerStrategyOptions.cs`
-→ no state-provider member; `grep -n 'internal string? Name' src/Resilion/Pipeline.cs` → `:47`.
-
-**Why (and why this is deferred rather than planned)**
-
-[comparison-with-polly.md](comparison-with-polly.md) lists a testing package as a gap. Walking through
-what it would actually provide:
-
-| Claimed capability | Reality |
-|---|---|
-| Deterministic time | `FakeTimeProvider` via `builder.TimeProvider` already covers it; see [testing.md](testing.md). **No gap.** |
-| Custom context construction | `ResilienceContext`'s constructor is internal, **but `ResilienceContextPool.Shared.Rent(ct)` is public** and `OperationKey`/`Properties`/`ContinueOnCapturedContext` are public setters. **No gap.** |
-| Recording executions | Typed pipelines already have the inline `AddStrategy(string, Func<…>)` overload. Untyped pipelines don't — and can't, because the untyped path needs a *method-level* generic delegate, which C# cannot express as a field. Deriving from `Strategy` works (`protected internal`). **Marginal.** |
-| Telemetry capture | `MeterListener`/`ActivityListener` work today; this repo's own `TelemetryTests` does exactly that. A helper would cut boilerplate. **Marginal.** |
-| **Circuit breaker state assertions** | **Real, blocking gap.** There is no public way to read a circuit's current `CircuitState` — `CircuitBreakerManualControl` only isolates and resets. **This cannot be built in a satellite package at all.** |
-| Pipeline name assertions | `Pipeline.Name` / `Pipeline<T>.Name` are internal — the only thing that would force `InternalsVisibleTo`. |
-
-So the concrete content is **one missing core API plus one visibility change**, not a package. A
-package here would be a thin wrapper whose main value is working around core omissions.
-
-**Ship these instead:**
-
-- `public sealed class CircuitBreakerStateProvider` with a `CircuitState State` property, plus
-  `StateProvider` on both circuit breaker options records. Mirror
-  `CircuitBreakerManualControl`'s existing bind-once pattern (`internal void Initialize(…)`, throws if
-  already bound), wired in `CircuitBreakerStateMachine`; `State` throws when unbound, matching
-  `IsolateAsync`.
-- `Pipeline.Name` / `Pipeline<TResult>.Name` internal → **public**. Useful for logging on its own, and
-  it removes the only `InternalsVisibleTo` a future testing package would need.
-
-**Evidence that would justify the package later:** (a) three or more distinct issues or discussions
-asking for test helpers; (b) a helper class from this repo's own test suite being copy-pasted into a
-user issue; (c) `Resilion.Http` shipping — that creates genuine demand for `TestHttpMessageHandler`-shaped
-doubles, which belong in a `Resilion.Http.Testing`, not a general `Resilion.Testing`.
-
-**Effort:** Low for the two core additions; the package itself is deferred.
-
----
-
 ### 4. Per-Call Delegate Allocation in Pipeline Chain
 
 **Status:** Open
@@ -933,6 +702,11 @@ Numbers that have left the active list. **Never reuse a number.**
 | 59 | Hedging drops PipelineName on per-attempt contexts | Fixed. See CHANGELOG `[Unreleased]`. |
 | 60 | Typed-strategy result mismatch silently skips the strategy | Fixed — now throws `InvalidOperationException`. |
 | 61 | README's synchronous-execution claims are broader than the truth | Fixed — claim scoped, four exceptions documented. |
+| 10 | Resilion.Testing package | Deferred; the two core gaps behind it (`CircuitBreakerStateProvider`, public `Pipeline.Name`) shipped instead. See CHANGELOG `[Unreleased]`. |
+| 12 | Hedging: HedgingDelayGenerator | Implemented. See CHANGELOG `[Unreleased]`. |
+| 41 | Pipeline dynamic reload via IOptionsMonitor | Implemented. See CHANGELOG `[Unreleased]`. |
+| 42 | Keyed services support | Implemented — always on, with idempotent `Pipeline.Dispose` as its prerequisite. |
+| 43 | PredicateBuilder<T> fluent API | Implemented — generic and non-generic. See CHANGELOG `[Unreleased]`. |
 
 ---
 

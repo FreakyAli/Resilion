@@ -1,1 +1,20 @@
 #nullable enable
+Resilion.Extensions.PipelineReplacedArgs<TKey>
+Resilion.Extensions.PipelineReplacedArgs<TKey>.Key.get -> TKey
+Resilion.Extensions.PipelineReplacedArgs<TKey>.Key.init -> void
+Resilion.Extensions.PipelineReplacedArgs<TKey>.PipelineReplacedArgs() -> void
+Resilion.Extensions.PipelineReplacedArgs<TKey>.PipelineReplacedArgs(TKey Key, System.Type? ResultType, System.IAsyncDisposable! ReplacedPipeline) -> void
+Resilion.Extensions.PipelineReplacedArgs<TKey>.ReplacedPipeline.get -> System.IAsyncDisposable!
+Resilion.Extensions.PipelineReplacedArgs<TKey>.ReplacedPipeline.init -> void
+Resilion.Extensions.PipelineReplacedArgs<TKey>.ResultType.get -> System.Type?
+Resilion.Extensions.PipelineReplacedArgs<TKey>.ResultType.init -> void
+Resilion.Extensions.ResiliencePipelineRegistry<TKey>.InvalidatePipeline(TKey key) -> bool
+Resilion.Extensions.ResiliencePipelineRegistry<TKey>.InvalidatePipeline<TResult>(TKey key) -> bool
+Resilion.Extensions.ResiliencePipelineRegistry<TKey>.OnPipelineReplaced.get -> System.Action<Resilion.Extensions.PipelineReplacedArgs<TKey>>?
+Resilion.Extensions.ResiliencePipelineRegistry<TKey>.OnPipelineReplaced.set -> void
+Resilion.Extensions.ResiliencePipelineRegistry<TKey>.TryGetPipeline<TResult>(TKey key, out Resilion.Pipeline<TResult>? pipeline) -> bool
+static Resilion.Extensions.ResilionServiceCollectionExtensions.AddResiliencePipeline<TOptions>(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, string! name, string? optionsName, System.Action<Resilion.PipelineBuilder!, TOptions!>! configure) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Resilion.Extensions.ResilionServiceCollectionExtensions.AddResiliencePipeline<TOptions>(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, string! name, System.Action<Resilion.PipelineBuilder!, TOptions!>! configure) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Resilion.Extensions.ResilionServiceCollectionExtensions.AddResiliencePipeline<TResult, TOptions>(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, string! name, string? optionsName, System.Action<Resilion.PipelineBuilder<TResult>!, TOptions!>! configure) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Resilion.Extensions.ResilionServiceCollectionExtensions.AddResiliencePipeline<TResult, TOptions>(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, string! name, System.Action<Resilion.PipelineBuilder<TResult>!, TOptions!>! configure) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Resilion.Extensions.ResilionServiceCollectionExtensions.ConfigureResiliencePipelineRegistry(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Action<Resilion.Extensions.ResiliencePipelineRegistry<string!>!>! configure) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!

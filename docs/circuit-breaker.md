@@ -38,6 +38,7 @@ catch (CircuitBrokenException ex)
 | `OnClosed` | `ResilienceEventHandler` | null | Fired on HalfOpen → Closed |
 | `OnHalfOpened` | `ResilienceEventHandler` | null | Fired on Open → HalfOpen |
 | `ManualControl` | `CircuitBreakerManualControl` | null | Manual isolate/reset |
+| `StateProvider` | `CircuitBreakerStateProvider` | null | Observe the current state |
 
 ## State machine
 
@@ -99,6 +100,64 @@ await control.ResetAsync();
 ```
 
 Each `CircuitBreakerManualControl` instance can only be bound to one circuit breaker. Reusing across multiple breakers throws `InvalidOperationException`.
+
+## Observing state
+
+`CircuitBreakerStateProvider` reports a circuit's current state. Bind one instance per breaker —
+a second binding throws, like `CircuitBreakerManualControl`.
+
+```csharp
+var state = new CircuitBreakerStateProvider();
+
+var pipeline = Pipeline.Create(b => b.AddCircuitBreaker(new CircuitBreakerStrategyOptions
+{
+    FailureRatioThreshold = 0.5,
+    MinimumThroughput = 10,
+    StateProvider = state,
+}));
+
+// Health endpoint, metric, log line, or test assertion:
+app.MapGet("/health/upstream", () => state.State switch
+{
+    CircuitState.Closed   => Results.Ok("healthy"),
+    CircuitState.HalfOpen => Results.Ok("recovering"),
+    _                     => Results.StatusCode(503),
+});
+```
+
+Reading `State` before it is bound to a strategy throws `InvalidOperationException`.
+
+### Do not gate execution on it
+
+`State` is a point-in-time read of a value other threads change concurrently. Using it to decide
+whether to call is both racy and actively harmful:
+
+```csharp
+// WRONG
+if (state.State == CircuitState.Closed)
+{
+    await pipeline.ExecuteAsync(CallDependencyAsync);
+}
+```
+
+The circuit can open between the check and the call — but the worse problem is that skipping the
+call while the circuit is open also skips the **half-open trial call** that lets the circuit close
+again. A circuit gated this way can stay open after the dependency has recovered.
+
+Execute and let the strategy reject. It holds the lock that makes the decision correct, and an open
+circuit already fails fast:
+
+```csharp
+// RIGHT
+try
+{
+    await pipeline.ExecuteAsync(CallDependencyAsync);
+}
+catch (CircuitBrokenException)
+{
+    // shed load, serve cached data, return 503 — whatever degradation suits
+}
+```
 
 ## Result-based circuit breaker
 

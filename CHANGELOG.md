@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `PredicateBuilder<TResult>` and `PredicateBuilder` — compose a strategy's `ShouldHandle` from
+  `Handle<TException>()`, `HandleInner<TException>()` and `HandleResult(...)` clauses instead of
+  writing the delegate by hand, with an implicit conversion so a builder can be assigned directly.
+  Clauses combine with OR. Two deliberate behaviours: `Build()` **throws on an empty builder**, so
+  it can never become a second route to the default predicate (reachable only by leaving
+  `ShouldHandle` null); and it does **not** inherit the default's cancellation carve-out, so
+  `.Handle<Exception>()` matches `OperationCanceledException`. Unlike `PipelineBuilder` it is not
+  single-use — it produces a value rather than configuring one thing
+- `HedgingStrategyOptions<TResult>.HedgingDelayGenerator` and `HedgingDelayGeneratorArgs` — compute
+  the delay before each hedged attempt. Because the delay *is* the mode selector, a generator
+  selects the mode **per attempt**: `InfiniteTimeSpan` makes that attempt wait for its predecessor,
+  `Zero` launches it immediately. `AttemptNumber` is the attempt being launched, so `1` for the
+  first hedge, matching the existing hedging args records. Unsupported on the synchronous path,
+  which throws, as it already does for parallel and latency modes
+- `CircuitBreakerStateProvider`, plus `StateProvider` on both circuit breaker options records —
+  the first public way to read a circuit's state. Previously `CircuitBreakerManualControl` could
+  isolate and reset a circuit but not report it, forcing callers into indirect assertions like
+  "the next call threw `CircuitBrokenException`, therefore it must be open". Bind one instance per
+  breaker; a second binding throws. **Do not branch on it** — besides being a point-in-time read,
+  gating execution on it skips the half-open trial call and can leave a circuit open after the
+  dependency recovers. Documented on the property and in `docs/circuit-breaker.md`
+- `ResiliencePipelineRegistry<TKey>.InvalidatePipeline(key)` and `InvalidatePipeline<TResult>(key)`,
+  with an optional `OnPipelineReplaced` callback and `PipelineReplacedArgs<TKey>` — drop a cached
+  pipeline so the next resolve rebuilds it. The registry never disposes a replaced pipeline,
+  because it cannot know when in-flight executions on it have finished; the callback is how the
+  caller learns there is something to decide about
+- `AddResiliencePipeline<TOptions>` / `<TResult, TOptions>` overloads (with and without a named
+  options instance) — bind a pipeline to `IOptionsMonitor<TOptions>` and rebuild it automatically
+  when those options change. This is what finally uses the `Microsoft.Extensions.Options`
+  reference that had been declared but unused since the package was created. **Resolve such a
+  pipeline per call** through `IPipelineProvider<TKey>`; a consumer that caches it in a field keeps
+  executing the old one
+- `ConfigureResiliencePipelineRegistry` — configure the registry itself. Runs before any pipeline
+  factory is registered, so registry-level settings are in place before a pipeline can be built
+- `ResiliencePipelineRegistry<TKey>.TryGetPipeline<TResult>` — fills the asymmetry with the
+  existing non-generic `TryGetPipeline`. Deliberately not added to `IPipelineProvider<TKey>`, since
+  adding a member to a public interface breaks external implementers; that waits for a major version
+- Keyed DI resolution of named pipelines: `[FromKeyedServices("name")] Pipeline` now works, with no
+  new Resilion API — the consumer-facing surface is the BCL attribute. Registered for every
+  `AddResiliencePipeline` overload with `TryAddKeyedSingleton`, so a duplicate call does not add a
+  second descriptor. **Incompatible with reload by construction** (a keyed singleton resolves once
+  for the container's lifetime), which is documented on both sides and pinned by a test
+
+### Changed
+
+- `Pipeline.Name` and `Pipeline<TResult>.Name` are public. Useful for logging on its own, and it
+  removes the only `InternalsVisibleTo` a future testing package would have needed
+- `Pipeline.Dispose`/`DisposeAsync` and the typed equivalents are **idempotent**; the second and
+  later calls are no-ops. Required by keyed DI, where the container disposes the keyed singleton
+  *and* the registry disposes every pipeline it created, so the same instance is reached twice.
+  Harmless while no strategy holds a resource, and a real double-dispose bug the day one does
+- `docs/testing.md` asserts circuit state directly with `CircuitBreakerStateProvider` instead of
+  teaching the indirect "it threw, so it must be open" idiom, with a pointer to why that idiom
+  must not be lifted into production code
+
 ### Fixed
 
 - **Timeout cancellation classification is now race-free.** `WasCancelledByTimeout` read

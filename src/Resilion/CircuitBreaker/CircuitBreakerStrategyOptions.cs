@@ -65,6 +65,12 @@ public sealed record CircuitBreakerStrategyOptions
     /// </summary>
     public CircuitBreakerManualControl? ManualControl { get; init; }
 
+    /// <summary>
+    /// Gets an optional provider exposing this circuit breaker's current state. Bind one instance
+    /// per circuit breaker; a second binding throws.
+    /// </summary>
+    public CircuitBreakerStateProvider? StateProvider { get; init; }
+
     internal void Validate()
     {
         if (FailureRatioThreshold is < 0.0 or > 1.0)
@@ -140,6 +146,12 @@ public sealed record CircuitBreakerStrategyOptions<TResult>
 
     /// <inheritdoc cref="CircuitBreakerStrategyOptions.ManualControl"/>
     public CircuitBreakerManualControl? ManualControl { get; init; }
+
+    /// <summary>
+    /// Gets an optional provider exposing this circuit breaker's current state. Bind one instance
+    /// per circuit breaker; a second binding throws.
+    /// </summary>
+    public CircuitBreakerStateProvider? StateProvider { get; init; }
 
     internal void Validate()
     {

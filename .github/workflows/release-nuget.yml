@@ -58,7 +58,7 @@ jobs:
           # Data-driven so adding a package is a one-line change here and nowhere else.
           # The previous form hardcoded three pack commands AND a `-ne 3` assertion below, so a
           # fourth package would have broken every release until both were found and edited.
-          PROJECTS=(Resilion Resilion.Extensions Resilion.RateLimiting)
+          PROJECTS=(Resilion Resilion.Extensions Resilion.RateLimiting Resilion.Http)
           for p in "${PROJECTS[@]}"; do
             dotnet pack "src/$p/$p.csproj" -c Release --no-build \
               -p:Version="${VERSION}" -p:ContinuousIntegrationBuild=true

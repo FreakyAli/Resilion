@@ -23,7 +23,8 @@ internal sealed class CircuitBreakerStrategy : Strategy
             options.OnOpened,
             options.OnClosed,
             options.OnHalfOpened,
-            options.ManualControl);
+            options.ManualControl,
+            options.StateProvider);
     }
 
     internal CircuitState State => _machine.State;

@@ -76,7 +76,36 @@ public async Task Retries_Three_Times_Then_Succeeds()
 
 ## Testing circuit breaker state
 
-Trip the circuit and verify rejection:
+Assert on the state directly with `CircuitBreakerStateProvider`:
+
+```csharp
+[Fact]
+public async Task Circuit_Opens_After_Failures()
+{
+    var state = new CircuitBreakerStateProvider();
+    var pipeline = Pipeline.Create(b => b.AddCircuitBreaker(new CircuitBreakerStrategyOptions
+    {
+        FailureRatioThreshold = 0.5,
+        MinimumThroughput = 2,
+        StateProvider = state,
+    }));
+
+    Assert.Equal(CircuitState.Closed, state.State);
+
+    for (var i = 0; i < 2; i++)
+    {
+        await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await pipeline.ExecuteAsync<string>(ct => throw new InvalidOperationException()));
+    }
+
+    Assert.Equal(CircuitState.Open, state.State);
+}
+```
+
+This is a test-only convenience for *observing* state. Production code must not branch on it — see
+[circuit-breaker.md](circuit-breaker.md#do-not-gate-execution-on-it).
+
+Alternatively, trip the circuit and verify rejection, which also exercises the caller's path:
 
 ```csharp
 [Fact]

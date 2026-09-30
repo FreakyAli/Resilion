@@ -782,3 +782,92 @@ public class PipelineAsyncDisposableTests
         Assert.Contains("SyncOnly:disposed", log);
     }
 }
+
+/// <summary>
+/// Idempotent disposal (prerequisite for keyed DI, future-plans #42) and the now-public
+/// <c>Pipeline.Name</c>.
+/// </summary>
+public class PipelineDisposalAndNameTests
+{
+    private sealed class DisposeCountingStrategy : Strategy
+    {
+        public int DisposeCount { get; private set; }
+
+        protected internal override ValueTask<Outcome<TResult>> ExecuteAsync<TResult>(
+            Func<ResilienceContext, ValueTask<Outcome<TResult>>> callback,
+            ResilienceContext context)
+            => callback(context);
+
+        public override void Dispose() => DisposeCount++;
+    }
+
+    [Fact]
+    public void Dispose_CalledTwice_IsNoOp()
+    {
+        var strategy = new DisposeCountingStrategy();
+        var pipeline = Pipeline.Create(b => b.AddStrategy(strategy));
+
+        pipeline.Dispose();
+        pipeline.Dispose();
+        pipeline.Dispose();
+
+        Assert.Equal(1, strategy.DisposeCount);
+    }
+
+    [Fact]
+    public async Task Async_DisposeAsync_CalledTwice_IsNoOp()
+    {
+        var strategy = new DisposeCountingStrategy();
+        var pipeline = Pipeline.Create(b => b.AddStrategy(strategy));
+
+        await pipeline.DisposeAsync();
+        await pipeline.DisposeAsync();
+
+        Assert.Equal(1, strategy.DisposeCount);
+    }
+
+    [Fact]
+    public async Task Async_DisposeThenDisposeAsync_DisposesOnce()
+    {
+        // The two owners in the keyed-DI case need not agree on which overload they call.
+        var strategy = new DisposeCountingStrategy();
+        var pipeline = Pipeline.Create(b => b.AddStrategy(strategy));
+
+        pipeline.Dispose();
+        await pipeline.DisposeAsync();
+
+        Assert.Equal(1, strategy.DisposeCount);
+    }
+
+    [Fact]
+    public void Typed_Dispose_CalledTwice_IsNoOp()
+    {
+        var strategy = new DisposeCountingStrategy();
+        var pipeline = Pipeline.Create<string>(b => b.AddStrategy(strategy));
+
+        pipeline.Dispose();
+        pipeline.Dispose();
+
+        Assert.Equal(1, strategy.DisposeCount);
+    }
+
+    [Fact]
+    public void Name_IsSetFromBuilder()
+    {
+        var pipeline = Pipeline.Create(b => { b.Name = "named"; });
+
+        Assert.Equal("named", pipeline.Name);
+    }
+
+    [Fact]
+    public void Name_IsNullWhenUnset()
+        => Assert.Null(Pipeline.Create(b => { }).Name);
+
+    [Fact]
+    public void Typed_Name_IsSetFromBuilder()
+    {
+        var pipeline = Pipeline.Create<string>(b => { b.Name = "typed-named"; });
+
+        Assert.Equal("typed-named", pipeline.Name);
+    }
+}

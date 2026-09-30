@@ -1,1 +1,37 @@
 #nullable enable
+Resilion.CircuitBreakerStateProvider
+Resilion.CircuitBreakerStateProvider.CircuitBreakerStateProvider() -> void
+Resilion.CircuitBreakerStateProvider.State.get -> Resilion.CircuitState
+Resilion.CircuitBreakerStrategyOptions.StateProvider.get -> Resilion.CircuitBreakerStateProvider?
+Resilion.CircuitBreakerStrategyOptions.StateProvider.init -> void
+Resilion.CircuitBreakerStrategyOptions<TResult>.StateProvider.get -> Resilion.CircuitBreakerStateProvider?
+Resilion.CircuitBreakerStrategyOptions<TResult>.StateProvider.init -> void
+Resilion.HedgingDelayGeneratorArgs
+Resilion.HedgingDelayGeneratorArgs.AttemptNumber.get -> int
+Resilion.HedgingDelayGeneratorArgs.AttemptNumber.init -> void
+Resilion.HedgingDelayGeneratorArgs.Context.get -> Resilion.ResilienceContext!
+Resilion.HedgingDelayGeneratorArgs.Context.init -> void
+Resilion.HedgingDelayGeneratorArgs.HedgingDelayGeneratorArgs() -> void
+Resilion.HedgingDelayGeneratorArgs.HedgingDelayGeneratorArgs(int AttemptNumber, Resilion.ResilienceContext! Context) -> void
+Resilion.HedgingStrategyOptions<TResult>.HedgingDelayGenerator.get -> System.Func<Resilion.HedgingDelayGeneratorArgs, System.TimeSpan>?
+Resilion.HedgingStrategyOptions<TResult>.HedgingDelayGenerator.init -> void
+Resilion.Pipeline.Name.get -> string?
+Resilion.Pipeline<TResult>.Name.get -> string?
+Resilion.PredicateBuilder
+Resilion.PredicateBuilder.Build() -> System.Func<System.Exception!, bool>!
+Resilion.PredicateBuilder.Handle<TException>() -> Resilion.PredicateBuilder!
+Resilion.PredicateBuilder.Handle<TException>(System.Func<TException!, bool>! predicate) -> Resilion.PredicateBuilder!
+Resilion.PredicateBuilder.HandleInner<TException>() -> Resilion.PredicateBuilder!
+Resilion.PredicateBuilder.HandleInner<TException>(System.Func<TException!, bool>! predicate) -> Resilion.PredicateBuilder!
+Resilion.PredicateBuilder.PredicateBuilder() -> void
+Resilion.PredicateBuilder<TResult>
+Resilion.PredicateBuilder<TResult>.Build() -> System.Func<Resilion.Outcome<TResult>, bool>!
+Resilion.PredicateBuilder<TResult>.Handle<TException>() -> Resilion.PredicateBuilder<TResult>!
+Resilion.PredicateBuilder<TResult>.Handle<TException>(System.Func<TException!, bool>! predicate) -> Resilion.PredicateBuilder<TResult>!
+Resilion.PredicateBuilder<TResult>.HandleInner<TException>() -> Resilion.PredicateBuilder<TResult>!
+Resilion.PredicateBuilder<TResult>.HandleInner<TException>(System.Func<TException!, bool>! predicate) -> Resilion.PredicateBuilder<TResult>!
+Resilion.PredicateBuilder<TResult>.HandleResult(System.Func<TResult, bool>! predicate) -> Resilion.PredicateBuilder<TResult>!
+Resilion.PredicateBuilder<TResult>.HandleResult(TResult result) -> Resilion.PredicateBuilder<TResult>!
+Resilion.PredicateBuilder<TResult>.PredicateBuilder() -> void
+static Resilion.PredicateBuilder.implicit operator System.Func<System.Exception!, bool>!(Resilion.PredicateBuilder! builder) -> System.Func<System.Exception!, bool>!
+static Resilion.PredicateBuilder<TResult>.implicit operator System.Func<Resilion.Outcome<TResult>, bool>!(Resilion.PredicateBuilder<TResult>! builder) -> System.Func<Resilion.Outcome<TResult>, bool>!

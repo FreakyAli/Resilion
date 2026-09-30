@@ -36,6 +36,28 @@ public sealed record HedgingStrategyOptions<TResult>
     public TimeSpan HedgingDelay { get; init; } = TimeSpan.FromSeconds(2);
 
     /// <summary>
+    /// Gets an optional generator computing the delay before each hedged attempt. When set,
+    /// <see cref="HedgingDelay"/> is ignored.
+    /// </summary>
+    /// <remarks>
+    /// Because the delay selects the hedging mode, a generator selects it <em>per attempt</em>:
+    /// returning <see cref="System.Threading.Timeout.InfiniteTimeSpan"/> makes that attempt wait
+    /// for its predecessor, <see cref="TimeSpan.Zero"/> launches it immediately, and any positive
+    /// value waits that long unless an earlier attempt finishes first. That is the point of the
+    /// feature — for example, hedge the first retry eagerly and later ones only on real latency.
+    /// <para>
+    /// A negative result other than <c>InfiniteTimeSpan</c> is clamped to
+    /// <see cref="TimeSpan.Zero"/> rather than throwing, because failing mid-execution would turn
+    /// a delay-computation slip into a lost request.
+    /// </para>
+    /// <para>
+    /// Not supported on the synchronous path: <c>Execute</c> throws when this is set, for the same
+    /// reason it rejects parallel and latency modes.
+    /// </para>
+    /// </remarks>
+    public Func<HedgingDelayGeneratorArgs, TimeSpan>? HedgingDelayGenerator { get; init; }
+
+    /// <summary>
     /// Gets the predicate that determines which outcomes should trigger hedging.
     /// Defaults to all exceptions except <see cref="OperationCanceledException"/>.
     /// </summary>
@@ -61,7 +83,11 @@ public sealed record HedgingStrategyOptions<TResult>
                 "MaxHedgedAttempts must be >= 1.");
         }
 
-        if (HedgingDelay < TimeSpan.Zero && HedgingDelay != System.Threading.Timeout.InfiniteTimeSpan)
+        // Skip the static range check when a generator is present: HedgingDelay is then ignored,
+        // so rejecting its value would refuse a configuration that is entirely consistent.
+        if (HedgingDelayGenerator is null
+            && HedgingDelay < TimeSpan.Zero
+            && HedgingDelay != System.Threading.Timeout.InfiniteTimeSpan)
         {
             throw new ArgumentOutOfRangeException(nameof(HedgingDelay), HedgingDelay,
                 "HedgingDelay must be non-negative, TimeSpan.Zero, or Timeout.InfiniteTimeSpan.");
@@ -84,6 +110,17 @@ public sealed record HedgingStrategyOptions<TResult>
 /// </summary>
 /// <param name="AttemptNumber">The 0-based attempt index (0 = primary, 1 = first hedge, etc.).</param>
 public readonly record struct HedgingActionContext(int AttemptNumber);
+
+/// <summary>
+/// Arguments passed to <see cref="HedgingStrategyOptions{TResult}.HedgingDelayGenerator"/>.
+/// </summary>
+/// <param name="AttemptNumber">
+/// The 0-based index of the attempt about to be launched, so <c>1</c> for the first hedge.
+/// Matches <see cref="HedgingActionContext.AttemptNumber"/> and
+/// <c>OnHedgingEvent&lt;TResult&gt;.AttemptNumber</c>.
+/// </param>
+/// <param name="Context">The resilience context for the execution.</param>
+public readonly record struct HedgingDelayGeneratorArgs(int AttemptNumber, ResilienceContext Context);
 
 /// <summary>
 /// Event arguments for the <see cref="HedgingStrategyOptions{TResult}.OnHedging"/> callback.
