@@ -43,7 +43,10 @@ jobs:
       - name: Build
         env:
           VERSION: ${{ steps.get_version.outputs.version_without_v }}
-        run: dotnet build -c Release -p:Version="${VERSION}"
+        # ContinuousIntegrationBuild must be set at COMPILE time: it is what normalizes the
+        # source paths embedded in the PDB for SourceLink, and it also promotes RS0016/RS0017
+        # (public API tracking) to errors. Setting it only on pack would be a no-op for both.
+        run: dotnet build -c Release -p:Version="${VERSION}" -p:ContinuousIntegrationBuild=true
 
       - name: Test
         run: dotnet test -c Release --no-build
@@ -52,9 +55,29 @@ jobs:
         env:
           VERSION: ${{ steps.get_version.outputs.version_without_v }}
         run: |
-          dotnet pack src/Resilion/Resilion.csproj -c Release --no-build -p:Version="${VERSION}"
-          dotnet pack src/Resilion.Extensions/Resilion.Extensions.csproj -c Release --no-build -p:Version="${VERSION}"
-          dotnet pack src/Resilion.RateLimiting/Resilion.RateLimiting.csproj -c Release --no-build -p:Version="${VERSION}"
+          # Data-driven so adding a package is a one-line change here and nowhere else.
+          # The previous form hardcoded three pack commands AND a `-ne 3` assertion below, so a
+          # fourth package would have broken every release until both were found and edited.
+          PROJECTS=(Resilion Resilion.Extensions Resilion.RateLimiting)
+          for p in "${PROJECTS[@]}"; do
+            dotnet pack "src/$p/$p.csproj" -c Release --no-build \
+              -p:Version="${VERSION}" -p:ContinuousIntegrationBuild=true
+          done
+          echo "EXPECTED_PACKAGE_COUNT=${#PROJECTS[@]}" >> "$GITHUB_ENV"
+
+      - name: Verify symbol packages were produced
+        env:
+          VERSION: ${{ steps.get_version.outputs.version_without_v }}
+        run: |
+          # `dotnet pack --no-build` produces the .snupkg only if the .pdb is already in the
+          # output from the Build step. That holds here, but it is the flakiest part of symbol
+          # publishing, so assert it rather than discovering it missing after a release.
+          SNUPKGS=$(find . -name "*.snupkg" -path "*${VERSION}*" | wc -l | tr -d ' ')
+          echo "Found $SNUPKGS symbol packages (expected $EXPECTED_PACKAGE_COUNT)"
+          if [ "$SNUPKGS" -ne "$EXPECTED_PACKAGE_COUNT" ]; then
+            echo "Symbol packages missing. Aborting rather than publishing without symbols."
+            exit 1
+          fi
 
       - name: NuGet login (OIDC - trusted publishing)
         id: login
@@ -65,10 +88,14 @@ jobs:
       - name: Push NuGet packages
         run: |
           VERSION="${{ steps.get_version.outputs.version_without_v }}"
+          # The ! -name "*.symbols.nupkg" filter is vestigial with SymbolPackageFormat=snupkg
+          # (find -name "*.nupkg" does not match a .snupkg), but is kept: if anyone drops that
+          # property the legacy name returns, and this filter is what keeps the count honest.
           NUPKGS=$(find . -name "*.nupkg" -path "*${VERSION}*" ! -name "*.symbols.nupkg")
-          COUNT=$(echo "$NUPKGS" | wc -l)
-          if [ "$COUNT" -ne 3 ]; then
-            echo "Expected exactly 3 matching .nupkg files, found $COUNT. Aborting."
+          # Note: `echo "" | wc -l` is 1, so count with find directly rather than echoing.
+          COUNT=$(find . -name "*.nupkg" -path "*${VERSION}*" ! -name "*.symbols.nupkg" | wc -l | tr -d ' ')
+          if [ "$COUNT" -ne "$EXPECTED_PACKAGE_COUNT" ]; then
+            echo "Expected exactly $EXPECTED_PACKAGE_COUNT matching .nupkg files, found $COUNT. Aborting."
             exit 1
           fi
           echo "$NUPKGS" | while read -r nupkg; do

@@ -20,19 +20,33 @@ Full per-class output (including method docs) is in the sibling `.md` files in t
 | Benchmark | Mean | Allocated |
 |-----------|-----:|----------:|
 | Direct call (no pipeline) | ~0 ns | 0 B |
-| Resilion — empty pipeline | 69 ns | 96 B |
-| Polly — empty pipeline | 59 ns | 0 B |
-| Resilion — single retry | 114 ns | 192 B |
-| Polly — single retry | 165 ns | 0 B |
-| Resilion — composite (Timeout+Retry+CB+Timeout) | 393 ns | 976 B |
-| Polly — composite (same shape) | 734 ns | 0 B |
-| Resilion — single retry, **sync** | 61 ns | 192 B |
+| Resilion — empty pipeline | 70 ns | 96 B |
+| Polly — empty pipeline | 60 ns | 0 B |
+| Resilion — single retry | 116 ns | 192 B |
+| Polly — single retry | 167 ns | 0 B |
+| Resilion — composite (Timeout+Retry+CB+Timeout) | 476 ns | 1120 B |
+| Polly — composite (same shape) | 745 ns | 0 B |
+| Resilion — single retry, **sync** | 53 ns | 192 B |
 
 Resilion's happy-path allocation is non-zero (Polly.Core's is zero here) but its wall-clock time
 is consistently lower across every shape tested, including the composite pipeline most
 applications actually run. The allocations come from per-strategy closures in the middleware
 chain — see [future-plans.md](../../docs/future-plans.md) item #4 and
 [tradeoffs.md](../../docs/tradeoffs.md).
+
+The composite figure moved from 393 ns / 976 B in the previous run. Two things changed, and it is
+worth separating them:
+
+- **976 B → 1120 B is a real regression, and deliberate.** The Timeout strategy now records which
+  cause cancelled its linked token first, so user cancellation can no longer be misclassified as a
+  timeout under a race. That costs 32 B per timeout, plus a `CancellationToken` registration when
+  the token reaching that timeout can be cancelled. The outer timeout replaces the context token
+  with a cancellable one, so the **inner** timeout pays the registration too — hence 144 B on this
+  two-timeout shape rather than 64 B. Measured in isolation: timeout-only went 360 B → 392 B.
+- **393 ns → 476 ns is mostly not that change.** Re-measuring the unmodified code on this machine
+  today gives 431 ns, not 393 ns, so roughly half the apparent slowdown is run-to-run drift in the
+  `ShortRun` configuration rather than the fix. Treat cross-run wall-clock deltas under `ShortRun`
+  (3 iterations) as indicative only; allocation figures are deterministic and comparable.
 
 ## Real-world scenario patterns
 

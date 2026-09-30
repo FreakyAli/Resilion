@@ -57,7 +57,24 @@ var pipeline = Pipeline.Create(b => b
 ```
 
 ### Sync and Async
-Both `Execute` and `ExecuteAsync` with **true sync implementations** — not sync-over-async. No blocking calls, no artificial overhead.
+Every built-in strategy has a **real synchronous implementation** on its own execution path —
+`Thread.Sleep` and `WaitHandle`, not `.GetAwaiter().GetResult()` over the async path. This matters
+on WinForms/WPF UI threads, ASP.NET Framework, and anywhere blocking on an async call risks
+deadlock.
+
+Four limits, so you can tell whether this covers your case:
+
+- An **async** fallback factory (`FallbackActionAsync`) or an **async** event handler
+  (`OnRetry`, `OnTimeout`, …) is still async work being run from a sync call. When a
+  `SynchronizationContext` is present, Resilion hops to the thread pool to run it — that hop is
+  what avoids the deadlock, but it is sync-over-async. Supply *synchronous* handlers
+  (`Action<TArgs>`, which is the default shape) and this never happens.
+- **Sync hedging is sequential-only.** Parallel and latency modes need real concurrency, so
+  `Execute` throws for them rather than silently degrading.
+- **Sync retry delays are not driven by `TimeProvider`**, so they can't be advanced by
+  `FakeTimeProvider` in tests ([future-plans #9](docs/future-plans.md)).
+- A **custom** strategy must override `Execute`; the base implementation throws under a
+  `SynchronizationContext` rather than risking a deadlock on your behalf.
 
 ```csharp
 // Synchronous execution
@@ -401,10 +418,16 @@ Measured on an Apple M4 Pro against Polly.Core 8.5.2, same pipeline shapes both 
 
 | Scenario | Resilion | Polly.Core | Notes |
 |----------|---------:|-----------:|-------|
-| Empty pipeline | 69 ns / 96 B | 59 ns / 0 B | Resilion allocates per-strategy closures; Polly's happy path is allocation-free |
-| Single retry (happy path) | 114 ns / 192 B | 165 ns / 0 B | Resilion faster in wall-clock time despite allocating |
-| Composite (Timeout+Retry+CB+Timeout) | 393 ns / 976 B | 734 ns / 0 B | The realistic multi-strategy shape most apps run |
-| Same pipeline, **sync** execution | 61 ns / 192 B | — | True sync — no `Task` machinery |
+| Empty pipeline | 70 ns / 96 B | 60 ns / 0 B | Resilion allocates per-strategy closures; Polly's happy path is allocation-free |
+| Single retry (happy path) | 117 ns / 192 B | 169 ns / 0 B | Resilion faster in wall-clock time despite allocating |
+| Composite (Timeout+Retry+CB+Timeout) | 488 ns / 1120 B | 740 ns / 0 B | The realistic multi-strategy shape most apps run |
+| Same pipeline, **sync** execution | 53 ns / 192 B | — | Real sync path — no `Task` machinery |
+
+The composite figure includes the cost of race-free timeout cancellation classification: 32 B per
+timeout strategy, plus a `CancellationToken` registration whenever the token reaching that timeout
+can be cancelled. A timeout nested inside another timeout always sees a cancellable token, so the
+canonical total-plus-per-attempt shape above pays 144 B more than a version that misclassifies user
+cancellation as a timeout under a race. See [docs/tradeoffs.md](docs/tradeoffs.md).
 
 Resilion is consistently faster wall-clock, at the cost of small per-call allocations from the
 middleware chain's closures (tracked in [future-plans.md](docs/future-plans.md) item #4). If

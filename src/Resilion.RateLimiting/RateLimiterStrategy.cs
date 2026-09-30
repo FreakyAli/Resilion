@@ -19,13 +19,7 @@ internal sealed class RateLimiterStrategy : Strategy
         Func<ResilienceContext, ValueTask<Outcome<TResult>>> callback,
         ResilienceContext context)
     {
-        using var activity = ResilionTelemetry.ActivitySource.StartActivity("RateLimiter");
-        if (activity is not null)
-        {
-            activity.SetTag("strategy.name", "RateLimiter");
-            activity.SetTag("pipeline.name", context.PipelineName);
-            activity.SetTag("operation.key", context.OperationKey);
-        }
+        using var activity = StrategyActivity.Start("RateLimiter", context);
 
         var lease = await _options.RateLimiter!.AcquireAsync(
             permitCount: 1,
@@ -36,18 +30,12 @@ internal sealed class RateLimiterStrategy : Strategy
             if (!lease.IsAcquired)
             {
                 var result = await HandleRejection<TResult>(lease, context).ConfigureAwait(false);
-                if (activity is not null)
-                {
-                    activity.SetTag("outcome", "rejected");
-                }
+                StrategyActivity.SetOutcome(activity, "rejected");
                 return result;
             }
 
             var outcome = await callback(context).ConfigureAwait(context.ContinueOnCapturedContext);
-            if (activity is not null)
-            {
-                activity.SetTag("outcome", outcome.IsSuccess ? "success" : "failure");
-            }
+            StrategyActivity.SetOutcome(activity, outcome.IsSuccess ? "success" : "failure");
             return outcome;
         }
         finally
@@ -60,13 +48,7 @@ internal sealed class RateLimiterStrategy : Strategy
         Func<ResilienceContext, Outcome<TResult>> callback,
         ResilienceContext context)
     {
-        using var activity = ResilionTelemetry.ActivitySource.StartActivity("RateLimiter");
-        if (activity is not null)
-        {
-            activity.SetTag("strategy.name", "RateLimiter");
-            activity.SetTag("pipeline.name", context.PipelineName);
-            activity.SetTag("operation.key", context.OperationKey);
-        }
+        using var activity = StrategyActivity.Start("RateLimiter", context);
 
         // Sync acquire — AttemptAcquire does not wait in a queue.
         using var lease = _options.RateLimiter!.AttemptAcquire(permitCount: 1);
@@ -74,18 +56,12 @@ internal sealed class RateLimiterStrategy : Strategy
         if (!lease.IsAcquired)
         {
             var result = HandleRejectionSync<TResult>(lease, context);
-            if (activity is not null)
-            {
-                activity.SetTag("outcome", "rejected");
-            }
+            StrategyActivity.SetOutcome(activity, "rejected");
             return result;
         }
 
         var outcome = callback(context);
-        if (activity is not null)
-        {
-            activity.SetTag("outcome", outcome.IsSuccess ? "success" : "failure");
-        }
+        StrategyActivity.SetOutcome(activity, outcome.IsSuccess ? "success" : "failure");
         return outcome;
     }
 

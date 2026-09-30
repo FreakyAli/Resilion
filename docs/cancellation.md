@@ -75,7 +75,13 @@ The Timeout strategy distinguishes the two by checking which token fired:
 | Yes | Yes (linked) | `OperationCanceledException` |
 | No | No | Success (completed in time) |
 
-There is a narrow TOCTOU race where user cancellation between checks could be misclassified as timeout. This is nanoseconds wide and not observable in practice. Tracked as a fix in [future-plans.md](future-plans.md#46-timeout-cancellation-toctou-race-fix).
+Cancellation cause is classified without a race. The Timeout strategy records which cause —
+its timer, or the caller's token — cancelled the linked token *first*, via a compare-and-swap at
+the moment cancellation happens, so classification is a single read. A user cancellation arriving
+after the timeout has already fired cannot retroactively turn a `TimeoutRejectedException` into an
+`OperationCanceledException`, or vice versa. See [tradeoffs.md](tradeoffs.md) for the allocation
+this costs.
+
 
 ## Cooperative cancellation
 

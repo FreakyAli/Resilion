@@ -96,8 +96,19 @@ internal sealed class StrategyComponent : PipelineComponent
 
 /// <summary>
 /// Wraps a generic <see cref="Strategy{TResult}"/> as a <see cref="PipelineComponent"/>.
-/// When the execution result type does not match, the component passes through to the next component.
 /// </summary>
+/// <remarks>
+/// If the execution result type does not match <typeparamref name="TStrategyResult"/>, this throws
+/// rather than skipping the strategy. A skipped strategy is a silent wrong answer — a retry that
+/// never retries, or a circuit breaker that never breaks, on an execution that looks successful.
+/// <para>
+/// No public API can currently produce a mismatch: this component is only created by
+/// <c>PipelineBuilder&lt;TResult&gt;.AddStrategy(Strategy&lt;TResult&gt;)</c>, which constrains the
+/// strategy to the builder's result type, and that builder only yields a
+/// <see cref="Pipeline{TResult}"/> whose execute methods instantiate exactly that type. The guard
+/// exists so that a future composition surface cannot reintroduce a silent skip.
+/// </para>
+/// </remarks>
 internal sealed class TypedStrategyComponent<TStrategyResult> : PipelineComponent
 {
     private readonly Strategy<TStrategyResult> _strategy;
@@ -119,9 +130,7 @@ internal sealed class TypedStrategyComponent<TStrategyResult> : PipelineComponen
             return ExecuteTypedAsync(callback, context);
         }
 
-        // Type mismatch — skip this strategy entirely.
-        WarnTypeMismatch(typeof(TResult));
-        return _next.ExecuteAsync(callback, context);
+        throw TypeMismatch(typeof(TResult));
     }
 
     internal override Outcome<TResult> Execute<TResult>(
@@ -133,22 +142,22 @@ internal sealed class TypedStrategyComponent<TStrategyResult> : PipelineComponen
             return ExecuteTyped(callback, context);
         }
 
-        WarnTypeMismatch(typeof(TResult));
-        return _next.Execute(callback, context);
+        throw TypeMismatch(typeof(TResult));
     }
 
     /// <summary>
-    /// A typed strategy added to an untyped <see cref="Pipeline"/> silently does nothing when
-    /// executed with a different result type — <c>typeof(TResult) != typeof(TStrategyResult)</c>.
-    /// This doesn't change that behavior (it's still not an error), but at least makes it
-    /// visible when debugging why a strategy doesn't seem to run.
+    /// Builds the exception thrown when a typed strategy is reached by an execution whose result
+    /// type differs from the strategy's. Previously this was a <c>Debug.WriteLine</c> and a
+    /// pass-through; that warning was compiled out of Release builds by
+    /// <c>[Conditional("DEBUG")]</c>, so shipped packages skipped the strategy with
+    /// no diagnostic at all.
     /// </summary>
-    private void WarnTypeMismatch(Type requestedType)
-    {
-        System.Diagnostics.Debug.WriteLine(
-            $"[Resilion] {_strategy.GetType().Name} is a Strategy<{typeof(TStrategyResult).Name}> but was " +
-            $"executed with result type {requestedType.Name} — this strategy was skipped, not applied.");
-    }
+    private InvalidOperationException TypeMismatch(Type requestedType)
+        => new(
+            $"{_strategy.GetType().Name} is a Strategy<{typeof(TStrategyResult).Name}> but the pipeline " +
+            $"was executed with result type {requestedType.Name}. A typed strategy cannot be applied to " +
+            "an execution of a different result type. Use a Pipeline<" + typeof(TStrategyResult).Name +
+            "> for this strategy, or add it as a non-generic Strategy.");
 
     private ValueTask<Outcome<TResult>> ExecuteTypedAsync<TResult>(
         Func<ResilienceContext, ValueTask<Outcome<TResult>>> callback,

@@ -543,9 +543,10 @@ public class PipelineBuilderPostBuildGuardTests
 }
 
 /// <summary>
-/// <see cref="TypedStrategyComponent{TStrategyResult}"/> silently skips a typed strategy when
-/// executed with a mismatched result type — this exercises that path directly (via
-/// <c>InternalsVisibleTo</c>) and verifies it now at least warns via <c>Debug.WriteLine</c>.
+/// <see cref="TypedStrategyComponent{TStrategyResult}"/> throws when reached by an execution whose
+/// result type differs from the strategy's, rather than silently skipping the strategy. Exercised
+/// directly via <c>InternalsVisibleTo</c>, because no public API can currently produce a mismatch —
+/// the guard exists so a future composition surface cannot reintroduce a silent wrong answer.
 /// </summary>
 public class TypedStrategyComponentMismatchTests
 {
@@ -562,42 +563,113 @@ public class TypedStrategyComponentMismatchTests
         }
     }
 
-    private sealed class RecordingTraceListener : System.Diagnostics.TraceListener
-    {
-        public List<string> Messages { get; } = [];
-        public override void Write(string? message) { }
-        public override void WriteLine(string? message) => Messages.Add(message ?? string.Empty);
-    }
+    // ─── Mismatch throws ────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task ExecuteAsync_TypeMismatch_SkipsStrategyAndWarns()
+    public async Task Async_TypeMismatch_Throws()
     {
         var strategy = new PassthroughStringStrategy();
         var component = new TypedStrategyComponent<string>(strategy, PipelineComponent.Empty);
-
-        var listener = new RecordingTraceListener();
-        System.Diagnostics.Trace.Listeners.Add(listener);
         var context = ResilienceContextPool.Shared.Rent();
         try
         {
             // Executed with TResult = int, but the strategy is Strategy<string> — mismatch.
-            var outcome = await component.ExecuteAsync<int>(
-                ctx => new ValueTask<Outcome<int>>(Outcome<int>.FromResult(42)),
-                context);
+            var ex = await Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await component.ExecuteAsync<int>(
+                    ctx => new ValueTask<Outcome<int>>(Outcome<int>.FromResult(42)),
+                    context));
 
-            // Skipped, not applied — the callback's result passes through untouched.
-            Assert.Equal(42, outcome.Result);
+            // The message must name both types, or it is undiagnosable in the field.
+            Assert.Contains("Strategy<String>", ex.Message);
+            Assert.Contains("Int32", ex.Message);
+
+            // The strategy must not have run, and the failure must not be silent.
             Assert.False(strategy.WasCalled);
         }
         finally
         {
-            System.Diagnostics.Trace.Listeners.Remove(listener);
             ResilienceContextPool.Shared.Return(context);
         }
+    }
 
-#if DEBUG
-        Assert.Contains(listener.Messages, m => m.Contains("was skipped, not applied"));
-#endif
+    [Fact]
+    public void Sync_TypeMismatch_Throws()
+    {
+        var strategy = new PassthroughStringStrategy();
+        var component = new TypedStrategyComponent<string>(strategy, PipelineComponent.Empty);
+        var context = ResilienceContextPool.Shared.Rent();
+        try
+        {
+            var ex = Assert.Throws<InvalidOperationException>(() =>
+                component.Execute<int>(ctx => Outcome<int>.FromResult(42), context));
+
+            Assert.Contains("Strategy<String>", ex.Message);
+            Assert.Contains("Int32", ex.Message);
+            Assert.False(strategy.WasCalled);
+        }
+        finally
+        {
+            ResilienceContextPool.Shared.Return(context);
+        }
+    }
+
+    // ─── Matching type still takes the zero-allocation reinterpret-cast path ─────────────────
+
+    [Fact]
+    public async Task Async_TypeMatch_AppliesStrategy()
+    {
+        var strategy = new PassthroughStringStrategy();
+        var component = new TypedStrategyComponent<string>(strategy, PipelineComponent.Empty);
+        var context = ResilienceContextPool.Shared.Rent();
+        try
+        {
+            var outcome = await component.ExecuteAsync<string>(
+                ctx => new ValueTask<Outcome<string>>(Outcome<string>.FromResult("ok")),
+                context);
+
+            Assert.Equal("ok", outcome.Result);
+            Assert.True(strategy.WasCalled);
+        }
+        finally
+        {
+            ResilienceContextPool.Shared.Return(context);
+        }
+    }
+
+    [Fact]
+    public void Sync_TypeMatch_AppliesStrategy()
+    {
+        var strategy = new PassthroughStringStrategy();
+        var component = new TypedStrategyComponent<string>(strategy, PipelineComponent.Empty);
+        var context = ResilienceContextPool.Shared.Rent();
+        try
+        {
+            var outcome = component.Execute<string>(ctx => Outcome<string>.FromResult("ok"), context);
+
+            Assert.Equal("ok", outcome.Result);
+            Assert.True(strategy.WasCalled);
+        }
+        finally
+        {
+            ResilienceContextPool.Shared.Return(context);
+        }
+    }
+
+    // ─── A typed pipeline never hits the mismatch path ───────────────────────────────────────
+
+    [Fact]
+    public async Task Async_TypedPipeline_NeverHitsMismatch()
+    {
+        // Pipeline<string> only ever instantiates ExecuteAsync<string>, so the guard is
+        // unreachable through the public API. If this ever throws, a composition surface has
+        // been added that can produce a mismatch — see future-plans #60.
+        var strategy = new PassthroughStringStrategy();
+        var pipeline = Pipeline.Create<string>(b => b.AddStrategy(strategy));
+
+        var result = await pipeline.ExecuteAsync(static ct => new ValueTask<string>("ok"));
+
+        Assert.Equal("ok", result);
+        Assert.True(strategy.WasCalled);
     }
 }
 

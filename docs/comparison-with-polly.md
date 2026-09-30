@@ -12,11 +12,19 @@ lean, but the moment you want DI integration or HTTP resilience, you're pulling 
 `Resilion.RateLimiting` are opt-in, separate packages — the core stays dependency-free no matter
 what you add.
 
-**True synchronous execution, not sync-over-async.** Polly's synchronous surface exists, but
-under the hood several code paths still route through `Task`/`ValueTask` machinery.
-Resilion's `Execute()` path uses real synchronous primitives — `Thread.Sleep`, `WaitHandle` — for
-every built-in strategy. This matters for ASP.NET Framework, WinForms/WPF UI threads, and any
-code that can't safely call `.GetAwaiter().GetResult()` on an async path without risking deadlock.
+**Real synchronous execution for every built-in strategy.** Polly's synchronous surface exists, but
+under the hood several code paths still route through `Task`/`ValueTask` machinery. Resilion's
+`Execute()` path uses real synchronous primitives — `Thread.Sleep`, `WaitHandle` — in every
+built-in strategy. This matters for ASP.NET Framework, WinForms/WPF UI threads, and any code that
+can't safely call `.GetAwaiter().GetResult()` on an async path without risking deadlock.
+
+Stated precisely, because this is the reason some people choose Resilion and they deserve the
+exact shape of it: the *strategies* are synchronous, but async work you hand them is still async.
+An async fallback factory or an async event handler is run via a thread-pool hop when a
+`SynchronizationContext` is present — deadlock-safe, but sync-over-async. Sync hedging is
+sequential-only and throws for parallel/latency modes. Sync retry delays bypass `TimeProvider`, so
+they aren't fake-clock testable. Custom strategies must override `Execute` themselves. See the
+"Sync and Async" section of the [README](../README.md) for the list.
 
 **`RetryDelay` as a discriminated union.** Polly's retry options have `Delay`, `BackoffType`,
 `UseJitter`, and `DelayGenerator` as independent properties — nothing stops you from setting
@@ -70,15 +78,22 @@ composes predicates without writing the lambda by hand. Resilion requires the fu
 Every item above that Resilion doesn't have yet is tracked with a concrete design in
 [future-plans.md](future-plans.md):
 
-| Feature | Priority | future-plans.md item |
-|---------|----------|----------------------|
-| `Resilion.Http` — `IHttpClientFactory` integration | Highest | #39 |
-| `Resilion.Testing` — test doubles, assertions | High | #10 |
-| Dynamic reload via `IOptionsMonitor` | Medium | #41 |
-| `Resilion.Chaos` — chaos engineering | Medium | #40 |
-| `PredicateBuilder<T>` fluent API | Lower | #43 |
-| `IConfiguration` binding for strategy options | Lower | #44 |
-| Telemetry enrichment | Lower | #45 |
+| Feature | Priority | Target | future-plans.md item |
+|---------|----------|--------|----------------------|
+| `PredicateBuilder<T>` fluent API | High | post-1.0 | #43 |
+| Dynamic reload via `IOptionsMonitor` | High | post-1.0 | #41 |
+| `Resilion.Http` — `IHttpClientFactory` integration | Highest | post-1.0 | #39 |
+| `Resilion.Chaos` — chaos engineering | Medium | unscheduled | #40 |
+| `IConfiguration` binding for strategy options | Lower | unscheduled | #44 |
+| Telemetry enrichment | Lower | unscheduled | #45 |
+| `Resilion.Testing` — test doubles, assertions | Lower | deferred | #10 |
+
+**None of these ship in 1.0.** 1.0 is scoped to making what the library already claims actually
+true — see the P0 section of [future-plans.md](future-plans.md). These are capabilities Resilion
+*lacks*, which you can plan around; a 1.0 should not ship promises it doesn't keep.
+
+Numbers refer to entries in [future-plans.md](future-plans.md). If a number here has no entry
+there, that is a bug in the docs — see [verification.md](verification.md).
 
 If one of these is a hard blocker for you today, Polly remains the right choice until Resilion
 catches up. If it isn't, Resilion is a smaller, simpler, equally-capable core for everything

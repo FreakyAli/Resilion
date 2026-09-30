@@ -21,22 +21,13 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
         Func<ResilienceContext, ValueTask<Outcome<TResult>>> callback,
         ResilienceContext context)
     {
-        using var activity = ResilionTelemetry.ActivitySource.StartActivity("Hedging");
-        if (activity is not null)
-        {
-            activity.SetTag("strategy.name", "Hedging");
-            activity.SetTag("pipeline.name", context.PipelineName);
-            activity.SetTag("operation.key", context.OperationKey);
-        }
+        using var activity = StrategyActivity.Start("Hedging", context);
 
         if (_options.MaxHedgedAttempts == 1)
         {
             // No hedging — just execute the primary.
             var result = await callback(context).ConfigureAwait(context.ContinueOnCapturedContext);
-            if (activity is not null)
-            {
-                activity.SetTag("outcome", result.IsSuccess ? "success" : "failure");
-            }
+            StrategyActivity.SetOutcome(activity, result.IsSuccess ? "success" : "failure");
             return result;
         }
 
@@ -104,10 +95,7 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
 
             // All attempts launched. Wait for the first success or all to fail.
             var outcome = await WaitForBestOutcome(attempts, userToken).ConfigureAwait(false);
-            if (activity is not null)
-            {
-                activity.SetTag("outcome", outcome.IsSuccess ? "success" : "hedging_exhausted");
-            }
+            StrategyActivity.SetOutcome(activity, outcome.IsSuccess ? "success" : "hedging_exhausted");
             return outcome;
         }
         finally
@@ -170,6 +158,8 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
                 "or set HedgingDelay to Timeout.InfiniteTimeSpan for sequential mode.");
         }
 
+        using var activity = StrategyActivity.Start("Hedging", context);
+
         // Sequential mode: execute sequentially (equivalent to InfiniteTimeSpan mode).
         Outcome<TResult> lastOutcome = default;
 
@@ -183,6 +173,7 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
             // Matches async path behavior (ResilienceContextPool.Shared.Rent + CopyFrom).
             var attemptContext = ResilienceContextPool.Shared.Rent(context.CancellationToken);
             attemptContext.OperationKey = context.OperationKey;
+            attemptContext.PipelineName = context.PipelineName;
             attemptContext.ContinueOnCapturedContext = context.ContinueOnCapturedContext;
             attemptContext.Properties.CopyFrom(context.Properties);
             try
@@ -196,11 +187,16 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
 
             if (!_options.ShouldHandleOutcome(lastOutcome))
             {
+                StrategyActivity.SetOutcome(activity, "success");
                 return lastOutcome;
             }
 
             if (attemptIndex < _options.MaxHedgedAttempts - 1)
             {
+                // Mirror the async path: count the hedge launch regardless of whether an
+                // OnHedging handler is registered, so the counter and the event never disagree.
+                ResilionTelemetry.HedgingAttempts.Add(1, new(ResilionTelemetry.PipelineNameTag, context.PipelineName), new(ResilionTelemetry.OperationKeyTag, context.OperationKey));
+
                 if (_options.OnHedging is { } handler && handler.HasHandler)
                 {
                     handler.Invoke(new OnHedgingEvent<TResult>(attemptIndex + 1, context));
@@ -208,6 +204,7 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
             }
         }
 
+        StrategyActivity.SetOutcome(activity, "hedging_exhausted");
         return lastOutcome;
     }
 
@@ -272,6 +269,7 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
             // Create a lightweight context copy with the per-attempt token.
             var attemptContext = ResilienceContextPool.Shared.Rent(ct);
             attemptContext.OperationKey = context.OperationKey;
+            attemptContext.PipelineName = context.PipelineName;
             attemptContext.ContinueOnCapturedContext = context.ContinueOnCapturedContext;
             attemptContext.Properties.CopyFrom(context.Properties);
             try

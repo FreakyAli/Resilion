@@ -30,9 +30,12 @@ internal sealed class CircuitBreakerTypedStrategy<TResult> : Strategy<TResult>
         Func<ResilienceContext, ValueTask<Outcome<TResult>>> callback,
         ResilienceContext context)
     {
+        using var activity = StrategyActivity.Start("CircuitBreaker", context);
+
         var rejection = _machine.TryReject(context);
         if (rejection is not null)
         {
+            StrategyActivity.SetOutcome(activity, "rejected");
             return Outcome<TResult>.FromException(rejection);
         }
 
@@ -41,12 +44,14 @@ internal sealed class CircuitBreakerTypedStrategy<TResult> : Strategy<TResult>
             var outcome = await callback(context).ConfigureAwait(context.ContinueOnCapturedContext);
             var isFailure = _options.ShouldHandleOutcome(outcome);
             await _machine.RecordOutcomeAsync(isFailure, context).ConfigureAwait(context.ContinueOnCapturedContext);
+            StrategyActivity.SetOutcome(activity, isFailure ? "failure" : "success");
             return outcome;
         }
         catch (Exception ex)
         {
             var isFailure = _options.ShouldHandleOutcome(Outcome<TResult>.FromException(ex));
             await _machine.RecordOutcomeAsync(isFailure, context).ConfigureAwait(context.ContinueOnCapturedContext);
+            StrategyActivity.SetOutcome(activity, "exception");
             throw;
         }
     }
@@ -55,9 +60,12 @@ internal sealed class CircuitBreakerTypedStrategy<TResult> : Strategy<TResult>
         Func<ResilienceContext, Outcome<TResult>> callback,
         ResilienceContext context)
     {
+        using var activity = StrategyActivity.Start("CircuitBreaker", context);
+
         var rejection = _machine.TryReject(context);
         if (rejection is not null)
         {
+            StrategyActivity.SetOutcome(activity, "rejected");
             return Outcome<TResult>.FromException(rejection);
         }
 
@@ -66,12 +74,14 @@ internal sealed class CircuitBreakerTypedStrategy<TResult> : Strategy<TResult>
             var outcome = callback(context);
             var isFailure = _options.ShouldHandleOutcome(outcome);
             _machine.RecordOutcome(isFailure, context);
+            StrategyActivity.SetOutcome(activity, isFailure ? "failure" : "success");
             return outcome;
         }
         catch (Exception ex)
         {
             var isFailure = _options.ShouldHandleOutcome(Outcome<TResult>.FromException(ex));
             _machine.RecordOutcome(isFailure, context);
+            StrategyActivity.SetOutcome(activity, "exception");
             throw;
         }
     }

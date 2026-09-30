@@ -32,21 +32,12 @@ internal sealed class CircuitBreakerStrategy : Strategy
         Func<ResilienceContext, ValueTask<Outcome<TResult>>> callback,
         ResilienceContext context)
     {
-        using var activity = ResilionTelemetry.ActivitySource.StartActivity("CircuitBreaker");
-        if (activity is not null)
-        {
-            activity.SetTag("strategy.name", "CircuitBreaker");
-            activity.SetTag("pipeline.name", context.PipelineName);
-            activity.SetTag("operation.key", context.OperationKey);
-        }
+        using var activity = StrategyActivity.Start("CircuitBreaker", context);
 
         var rejection = _machine.TryReject(context);
         if (rejection is not null)
         {
-            if (activity is not null)
-            {
-                activity.SetTag("outcome", "rejected");
-            }
+            StrategyActivity.SetOutcome(activity, "rejected");
             return Outcome<TResult>.FromException(rejection);
         }
 
@@ -55,19 +46,13 @@ internal sealed class CircuitBreakerStrategy : Strategy
             var outcome = await callback(context).ConfigureAwait(context.ContinueOnCapturedContext);
             await _machine.RecordOutcomeAsync(IsFailure(outcome.Exception), context)
                 .ConfigureAwait(context.ContinueOnCapturedContext);
-            if (activity is not null)
-            {
-                activity.SetTag("outcome", outcome.IsSuccess ? "success" : "failure");
-            }
+            StrategyActivity.SetOutcome(activity, outcome.IsSuccess ? "success" : "failure");
             return outcome;
         }
         catch (Exception ex)
         {
             await _machine.RecordOutcomeAsync(IsFailure(ex), context).ConfigureAwait(context.ContinueOnCapturedContext);
-            if (activity is not null)
-            {
-                activity.SetTag("outcome", "exception");
-            }
+            StrategyActivity.SetOutcome(activity, "exception");
             throw;
         }
     }
@@ -76,21 +61,12 @@ internal sealed class CircuitBreakerStrategy : Strategy
         Func<ResilienceContext, Outcome<TResult>> callback,
         ResilienceContext context)
     {
-        using var activity = ResilionTelemetry.ActivitySource.StartActivity("CircuitBreaker");
-        if (activity is not null)
-        {
-            activity.SetTag("strategy.name", "CircuitBreaker");
-            activity.SetTag("pipeline.name", context.PipelineName);
-            activity.SetTag("operation.key", context.OperationKey);
-        }
+        using var activity = StrategyActivity.Start("CircuitBreaker", context);
 
         var rejection = _machine.TryReject(context);
         if (rejection is not null)
         {
-            if (activity is not null)
-            {
-                activity.SetTag("outcome", "rejected");
-            }
+            StrategyActivity.SetOutcome(activity, "rejected");
             return Outcome<TResult>.FromException(rejection);
         }
 
@@ -98,19 +74,13 @@ internal sealed class CircuitBreakerStrategy : Strategy
         {
             var outcome = callback(context);
             _machine.RecordOutcome(IsFailure(outcome.Exception), context);
-            if (activity is not null)
-            {
-                activity.SetTag("outcome", outcome.IsSuccess ? "success" : "failure");
-            }
+            StrategyActivity.SetOutcome(activity, outcome.IsSuccess ? "success" : "failure");
             return outcome;
         }
         catch (Exception ex)
         {
             _machine.RecordOutcome(IsFailure(ex), context);
-            if (activity is not null)
-            {
-                activity.SetTag("outcome", "exception");
-            }
+            StrategyActivity.SetOutcome(activity, "exception");
             throw;
         }
     }

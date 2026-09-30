@@ -20,27 +20,33 @@ internal sealed class TimeoutStrategy : Strategy
         Func<ResilienceContext, ValueTask<Outcome<TResult>>> callback,
         ResilienceContext context)
     {
-        using var activity = ResilionTelemetry.ActivitySource.StartActivity("Timeout");
-        if (activity is not null)
-        {
-            activity.SetTag("strategy.name", "Timeout");
-            activity.SetTag("pipeline.name", context.PipelineName);
-            activity.SetTag("operation.key", context.OperationKey);
-        }
+        using var activity = StrategyActivity.Start("Timeout", context);
 
         var timeout = ResolveTimeout(context);
 
         if (timeout == System.Threading.Timeout.InfiniteTimeSpan)
         {
-            if (activity is not null)
-            {
-                activity.SetTag("outcome", "no_timeout");
-            }
+            StrategyActivity.SetOutcome(activity, "no_timeout");
             return await callback(context).ConfigureAwait(context.ContinueOnCapturedContext);
         }
 
         var previousToken = context.CancellationToken;
+        var cause = new CancellationCause();
         var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(previousToken);
+        cause.Cts = linkedCts;
+
+        // Only pay for the registration when the caller's token can actually be cancelled. For a
+        // default CancellationToken — the common case — nothing but the timer can cancel the
+        // linked source, so the cause is unambiguous without it.
+        CancellationTokenRegistration userRegistration = default;
+        if (previousToken.CanBeCanceled)
+        {
+            userRegistration = previousToken.Register(
+                static state => ((CancellationCause)state!).SetUser(),
+                cause,
+                useSynchronizationContext: false);
+        }
+
         var startTimestamp = _timeProvider.GetTimestamp();
         ITimer? timer = null;
 
@@ -49,9 +55,15 @@ internal sealed class TimeoutStrategy : Strategy
             timer = _timeProvider.CreateTimer(
                 static state =>
                 {
+                    var c = (CancellationCause)state!;
+
+                    // Record the cause before propagating it. Any thread that can observe the
+                    // cancellation must already be able to see why it happened.
+                    c.SetTimeout();
+
                     try
                     {
-                        ((CancellationTokenSource)state!).Cancel();
+                        c.Cts.Cancel();
                     }
                     catch
                     {
@@ -61,7 +73,7 @@ internal sealed class TimeoutStrategy : Strategy
                         // already been triggered via cancellation request, so suppressing is acceptable.
                     }
                 },
-                linkedCts,
+                cause,
                 timeout,
                 System.Threading.Timeout.InfiniteTimeSpan);
 
@@ -72,37 +84,29 @@ internal sealed class TimeoutStrategy : Strategy
                 var outcome = await callback(context).ConfigureAwait(context.ContinueOnCapturedContext);
 
                 if (outcome.Exception is OperationCanceledException oce
-                    && WasCancelledByTimeout(linkedCts, previousToken))
+                    && WasCancelledByTimeout(cause))
                 {
                     var elapsed = _timeProvider.GetElapsedTime(startTimestamp);
                     var result = await HandleTimeout<TResult>(context, timeout, elapsed, oce).ConfigureAwait(false);
-                    if (activity is not null)
-                    {
-                        activity.SetTag("outcome", "timeout");
-                    }
+                    StrategyActivity.SetOutcome(activity, "timeout");
                     return result;
                 }
 
-                if (activity is not null)
-                {
-                    activity.SetTag("outcome", outcome.IsSuccess ? "success" : "failure");
-                }
+                StrategyActivity.SetOutcome(activity, outcome.IsSuccess ? "success" : "failure");
                 return outcome;
             }
-            catch (OperationCanceledException oce) when (WasCancelledByTimeout(linkedCts, previousToken))
+            catch (OperationCanceledException oce) when (WasCancelledByTimeout(cause))
             {
                 var elapsed = _timeProvider.GetElapsedTime(startTimestamp);
                 var result = await HandleTimeout<TResult>(context, timeout, elapsed, oce).ConfigureAwait(false);
-                if (activity is not null)
-                {
-                    activity.SetTag("outcome", "timeout");
-                }
+                StrategyActivity.SetOutcome(activity, "timeout");
                 return result;
             }
         }
         finally
         {
             context.CancellationToken = previousToken;
+            userRegistration.Dispose();
 
             if (timer is not null)
             {
@@ -117,27 +121,33 @@ internal sealed class TimeoutStrategy : Strategy
         Func<ResilienceContext, Outcome<TResult>> callback,
         ResilienceContext context)
     {
-        using var activity = ResilionTelemetry.ActivitySource.StartActivity("Timeout");
-        if (activity is not null)
-        {
-            activity.SetTag("strategy.name", "Timeout");
-            activity.SetTag("pipeline.name", context.PipelineName);
-            activity.SetTag("operation.key", context.OperationKey);
-        }
+        using var activity = StrategyActivity.Start("Timeout", context);
 
         var timeout = ResolveTimeout(context);
 
         if (timeout == System.Threading.Timeout.InfiniteTimeSpan)
         {
-            if (activity is not null)
-            {
-                activity.SetTag("outcome", "no_timeout");
-            }
+            StrategyActivity.SetOutcome(activity, "no_timeout");
             return callback(context);
         }
 
         var previousToken = context.CancellationToken;
+        var cause = new CancellationCause();
         var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(previousToken);
+        cause.Cts = linkedCts;
+
+        // Only pay for the registration when the caller's token can actually be cancelled. For a
+        // default CancellationToken — the common case — nothing but the timer can cancel the
+        // linked source, so the cause is unambiguous without it.
+        CancellationTokenRegistration userRegistration = default;
+        if (previousToken.CanBeCanceled)
+        {
+            userRegistration = previousToken.Register(
+                static state => ((CancellationCause)state!).SetUser(),
+                cause,
+                useSynchronizationContext: false);
+        }
+
         var startTimestamp = _timeProvider.GetTimestamp();
         ITimer? timer = null;
 
@@ -146,9 +156,15 @@ internal sealed class TimeoutStrategy : Strategy
             timer = _timeProvider.CreateTimer(
                 static state =>
                 {
+                    var c = (CancellationCause)state!;
+
+                    // Record the cause before propagating it. Any thread that can observe the
+                    // cancellation must already be able to see why it happened.
+                    c.SetTimeout();
+
                     try
                     {
-                        ((CancellationTokenSource)state!).Cancel();
+                        c.Cts.Cancel();
                     }
                     catch
                     {
@@ -158,7 +174,7 @@ internal sealed class TimeoutStrategy : Strategy
                         // already been triggered via cancellation request, so suppressing is acceptable.
                     }
                 },
-                linkedCts,
+                cause,
                 timeout,
                 System.Threading.Timeout.InfiniteTimeSpan);
 
@@ -166,38 +182,30 @@ internal sealed class TimeoutStrategy : Strategy
             var outcome = callback(context);
 
             if (outcome.Exception is OperationCanceledException oce
-                && WasCancelledByTimeout(linkedCts, previousToken))
+                && WasCancelledByTimeout(cause))
             {
                 var elapsed = _timeProvider.GetElapsedTime(startTimestamp);
                 HandleTimeoutSync(context, timeout, elapsed);
-                if (activity is not null)
-                {
-                    activity.SetTag("outcome", "timeout");
-                }
+                StrategyActivity.SetOutcome(activity, "timeout");
                 return Outcome<TResult>.FromException(
                     new TimeoutRejectedException(timeout, elapsed, oce));
             }
 
-            if (activity is not null)
-            {
-                activity.SetTag("outcome", outcome.IsSuccess ? "success" : "failure");
-            }
+            StrategyActivity.SetOutcome(activity, outcome.IsSuccess ? "success" : "failure");
             return outcome;
         }
-        catch (OperationCanceledException oce) when (WasCancelledByTimeout(linkedCts, previousToken))
+        catch (OperationCanceledException oce) when (WasCancelledByTimeout(cause))
         {
             var elapsed = _timeProvider.GetElapsedTime(startTimestamp);
             HandleTimeoutSync(context, timeout, elapsed);
-            if (activity is not null)
-            {
-                activity.SetTag("outcome", "timeout");
-            }
+            StrategyActivity.SetOutcome(activity, "timeout");
             return Outcome<TResult>.FromException(
                 new TimeoutRejectedException(timeout, elapsed, oce));
         }
         finally
         {
             context.CancellationToken = previousToken;
+            userRegistration.Dispose();
             timer?.Dispose();
             linkedCts.Dispose();
         }
@@ -215,14 +223,46 @@ internal sealed class TimeoutStrategy : Strategy
 
     /// <summary>
     /// Determines whether the cancellation was caused by our timeout rather than the user's token.
-    /// In rare cases where user cancellation races with timeout, this may misclassify.
+    /// This is a single volatile read of a cause recorded at the moment cancellation happened, so
+    /// there is no time-of-check/time-of-use window: a later cancellation from the other source
+    /// cannot retroactively change the answer.
     /// </summary>
-    private static bool WasCancelledByTimeout(
-        CancellationTokenSource linkedCts,
-        CancellationToken userToken)
+    private static bool WasCancelledByTimeout(CancellationCause cause) => cause.WasTimeout;
+
+    /// <summary>
+    /// Records which cause cancelled the linked token <em>first</em>. The first writer wins via
+    /// compare-and-swap, which is what makes classification race-free.
+    /// </summary>
+    /// <remarks>
+    /// Reading <c>linkedCts.IsCancellationRequested &amp;&amp; !userToken.IsCancellationRequested</c>
+    /// instead is two separate reads, and the user token can change between them — misclassifying
+    /// user cancellation as a timeout. Pre-capturing the user token's state before the callback does
+    /// not fix it either; it only reverses the direction of the error, turning a real timeout into a
+    /// reported user cancellation when the user cancels after the timer fires. The question that
+    /// actually needs answering is "which happened first?", so that is what this records.
+    /// <para>
+    /// Ordering is guaranteed: <see cref="CancellationTokenSource"/> invokes callbacks in reverse
+    /// registration order, and the linked source's internal propagation registration is created by
+    /// <c>CreateLinkedTokenSource</c> — before ours. So on user cancellation <c>SetUser</c> runs
+    /// before <c>linkedCts</c> reports cancellation. The timer calls <c>SetTimeout</c> before
+    /// <c>Cancel</c>. Either way the cause is recorded before any consumer can observe the effect.
+    /// </para>
+    /// </remarks>
+    private sealed class CancellationCause
     {
-        // Check both atomically as possible: if linked CTS fired AND user token didn't.
-        return linkedCts.IsCancellationRequested && !userToken.IsCancellationRequested;
+        private const int None = 0;
+        private const int Timeout = 1;
+        private const int User = 2;
+
+        private int _cause;
+
+        internal CancellationTokenSource Cts = null!;
+
+        internal void SetTimeout() => Interlocked.CompareExchange(ref _cause, Timeout, None);
+
+        internal void SetUser() => Interlocked.CompareExchange(ref _cause, User, None);
+
+        internal bool WasTimeout => Volatile.Read(ref _cause) == Timeout;
     }
 
     /// <summary>
