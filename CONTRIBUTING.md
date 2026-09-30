@@ -70,7 +70,8 @@ dotnet test tests/Resilion.Tests -- --filter-method '*Async_RetriesOnException*'
 
 ### Running Benchmarks
 
-Benchmarks are not part of the solution file. Run them directly:
+Benchmarks are part of the solution (so CI keeps them compiling), but are not run by
+`dotnet test`. Run them directly:
 
 ```bash
 cd benchmarks/Resilion.Benchmarks

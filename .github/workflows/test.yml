@@ -24,10 +24,30 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # The library targets net8.0 only; running the same net8.0 test binaries under both
-        # the 8.0.x and 9.0.x runtimes catches framework-specific regressions (e.g. runtime
-        # behavior differences the library depends on) that a single-SDK job would miss.
-        dotnet-version: ["8.0.x", "9.0.x"]
+        # The library targets net8.0 only, so the useful axis is which RUNTIME the net8.0 test
+        # binaries execute on. Varying setup-dotnet's version did not achieve that, for two
+        # reasons: global.json requests 8.0.404 with rollForward: latestMajor, so the SDK
+        # actually selected is the newest installed on the runner regardless of this input; and
+        # Resilion.Tests.runtimeconfig.json pins framework 8.0.0 with the default Minor
+        # roll-forward policy, so both jobs resolved the same 8.0.x runtime. The matrix ran the
+        # same configuration twice.
+        #
+        # The knob is the RollForward MSBuild property, which writes "rollForward" into the test
+        # app's runtimeconfig.json and so scopes to that app alone:
+        #   LatestPatch -> stay on the 8.0 runtime, newest installed patch
+        #   LatestMajor -> run on the newest runtime installed below
+        #
+        # Two values that look right and are not:
+        #   Disable  forbids roll-forward entirely, so it demands the exact 8.0.0 patch and fails
+        #            on any real machine or image (which ship 8.0.x for x > 0).
+        #   Setting the DOTNET_ROLL_FORWARD environment variable instead applies the policy to
+        #            every .NET process in the step, including the dotnet CLI and the test host,
+        #            so the step dies before a test runs.
+        include:
+          - label: net8.0-runtime
+            roll-forward: LatestPatch
+          - label: newest-runtime
+            roll-forward: LatestMajor
     steps:
       - uses: actions/checkout@v4
         with:
@@ -37,13 +57,31 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: ${{ matrix.dotnet-version }}
+          # Both runtimes are installed in both legs, so the matrix does not depend on whatever
+          # the runner image happens to ship: LatestPatch resolves 8.0.x, LatestMajor resolves
+          # the highest present. This also satisfies global.json's 8.0.404 floor — it does not
+          # pin the SDK, since rollForward: latestMajor still selects the newest installed.
+          dotnet-version: |
+            8.0.x
+            9.0.x
 
       - name: Restore dependencies
         run: dotnet restore
 
       - name: Build Solution
-        run: dotnet build --configuration Release --no-restore
+        run: dotnet build --configuration Release --no-restore -p:RollForward=${{ matrix.roll-forward }}
+
+      - name: Verify the roll-forward policy reached the test app
+        # Without this the matrix is unfalsifiable: if the property ever stops landing, both legs
+        # silently collapse onto one runtime again — exactly the state this replaced.
+        run: |
+          set -eu
+          for f in tests/*/bin/Release/net8.0/*.runtimeconfig.json; do
+            echo "== $f"
+            grep -q '"rollForward": *"${{ matrix.roll-forward }}"' "$f" \
+              || { echo "rollForward=${{ matrix.roll-forward }} missing from $f"; cat "$f"; exit 1; }
+          done
+          dotnet --list-runtimes | grep Microsoft.NETCore.App
 
       - name: Run Unit Tests
         run: dotnet test --configuration Release --no-build -- --report-trx --results-directory ${{ github.workspace }}/TestResults
@@ -52,7 +90,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: success() || failure()
         with:
-          name: test-results-${{ matrix.dotnet-version }}-${{ github.run_id }}
+          name: test-results-${{ matrix.label }}-${{ github.run_id }}
           path: TestResults/*.trx
           retention-days: 7
 
@@ -60,7 +98,7 @@ jobs:
         uses: dorny/test-reporter@v1
         if: success() || failure()
         with:
-          name: Unit Test Results (${{ matrix.dotnet-version }})
+          name: Unit Test Results (${{ matrix.label }})
           path: TestResults/*.trx
           reporter: dotnet-trx
           fail-on-error: false

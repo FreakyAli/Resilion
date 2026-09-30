@@ -7,7 +7,10 @@ on:
     branches: [master]
 
 env:
-  DOTNET_VERSION: '9.0.x'
+  # Guarantees global.json's 8.0.404 floor is present. This is NOT a pin: global.json requests
+  # rollForward: latestMajor, so the SDK actually used is the newest installed on the runner.
+  # The previous value (9.0.x) implied a pin that never took effect.
+  DOTNET_VERSION: '8.0.x'
 
 permissions:
   contents: read

@@ -2,7 +2,16 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <!-- net8.0 only. The net10.0 target made Resilion.sln unbuildable by every SDK CI claims
+         to use: SDK 8.0.404 and 9.0.101 both fail with NETSDK1045, and only the newest installed
+         SDK could build the solution — which global.json's rollForward: latestMajor was silently
+         supplying, masking the breakage. Every committed report in benchmarks/results was produced
+         on net8.0 anyway. To do a cross-runtime comparison run, opt in with -p:BenchNet10=true
+         and select the framework with the -f flag. (Command omitted here: a double hyphen is
+         illegal inside an XML comment and silently breaks MSBuild's parse of this file, which
+         makes TargetFramework evaluate empty and surfaces as NETSDK1013.) -->
+    <TargetFrameworks>net8.0</TargetFrameworks>
+    <TargetFrameworks Condition="'$(BenchNet10)' == 'true'">net8.0;net10.0</TargetFrameworks>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>

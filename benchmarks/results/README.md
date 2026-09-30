@@ -52,18 +52,29 @@ worth separating them:
 
 | Benchmark | Mean | Allocated |
 |-----------|-----:|----------:|
-| Resilion — HTTP client pattern (Timeout+Retry+CB) | 267 ns | 552 B |
-| Polly — HTTP client pattern (same shape) | 391 ns | 0 B |
-| Resilion — DB query pattern (Fallback+Timeout+Retry) | 277 ns | 552 B |
-| Polly — DB query pattern (same shape) | 254 ns | 0 B |
-| Resilion — DB query, fallback triggered | 48.0 ms | 2988 B |
-| Resilion — Hedging, fast response | 10.7 μs | 2838 B |
-| Resilion — HTTP client, **sync** | 146 ns | 552 B |
-| Resilion — DB query, **sync** | 146 ns | 552 B |
-| Resilion — DB query, **sync**, fallback triggered | 54.4 ms | 1849 B |
+| Resilion — HTTP client pattern (Timeout+Retry+CB) | 324 ns | 584 B |
+| Polly — HTTP client pattern (same shape) | 397 ns | 0 B |
+| Resilion — DB query pattern (Fallback+Timeout+Retry) | 278 ns | 584 B |
+| Polly — DB query pattern (same shape) | 256 ns | 0 B |
+| Resilion — DB query, fallback triggered | 50.3 ms | 2990 B |
+| Resilion — Hedging, fast response | 10.8 μs | 2909 B |
+| Resilion — HTTP client, **sync** | 195 ns | 584 B |
+| Resilion — DB query, **sync** | 176 ns | 584 B |
+| Resilion — DB query, **sync**, fallback triggered | 51.5 ms | 1867 B |
 
 Sync execution is consistently *faster* than async for the same pipeline shape — the payoff of
-true sync (`Thread.Sleep`/no `Task` machinery) rather than sync-over-async.
+a real sync path (`Thread.Sleep`, no `Task` machinery) rather than sync-over-async.
+
+Both timeout-bearing shapes moved from 552 B to 584 B: exactly +32 B, one per Timeout strategy,
+from race-free cancellation classification. These pipelines contain a single timeout and are
+executed without a caller token, so they pay the recording object and not the token registration —
+see the two-timeout composite in the section above for the shape that pays both, and
+[tradeoffs.md](../../docs/tradeoffs.md) for why.
+
+Wall-clock figures here shifted more than allocation did, and should not be read as a like-for-like
+regression: re-measuring *unmodified* code on this machine produced up to ~10% run-to-run variation
+under `ShortRun` (3 iterations). Allocation is deterministic and comparable across runs; timing at
+this configuration is indicative only.
 
 **Note on the "fallback triggered" rows:** these jumped from microseconds to tens of
 milliseconds partway through this project. Not a performance regression — the DB-query
