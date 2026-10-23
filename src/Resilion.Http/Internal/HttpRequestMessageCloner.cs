@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Net.Http;
 
 namespace Resilion.Http.Internal;
@@ -21,10 +20,16 @@ internal static class HttpRequestMessageCloner
     /// </param>
     internal static HttpRequestMessage Clone(HttpRequestMessage source, byte[]? body)
     {
-        Debug.Assert(
-            body is not null || source.Content is null,
-            "A request with content must be cloned with its buffered body; the handler buffers " +
-            "before executing the pipeline.");
+        // A real check, not Debug.Assert. Violating this silently drops the caller's request body,
+        // and Debug.Assert is compiled out of the Release build that ships — which is exactly how
+        // an earlier version of the handler shipped a body-dropping retry past a Release test run.
+        if (body is null && source.Content is not null)
+        {
+            throw new InvalidOperationException(
+                "Cannot clone a request with content without its buffered body. This is a bug in " +
+                "Resilion.Http: the handler must buffer the body before executing the pipeline " +
+                "whenever HttpRequestReplay.CloneRequest is in effect.");
+        }
 
         var clone = new HttpRequestMessage(source.Method, source.RequestUri)
         {

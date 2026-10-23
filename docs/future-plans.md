@@ -35,16 +35,20 @@ entry without a row here — is a bug in this file; see CONTRIBUTING.md § Futur
 
 | # | Item | Priority | Type | Target | Effort | Status |
 |---|------|----------|------|--------|--------|--------|
-| 39 | Resilion.Http — HttpClient integration | P1 | Feature | post-1.0 | High | Open |
+| 62 | Event handler properties reject a bare lambda | P1 | Improvement | post-1.0 | Medium | Open |
+| 63 | Outcome-aware retry delay (blocks Retry-After) | P1 | Feature | post-1.0 | Medium | Open |
+| 4 | Per-call delegate allocation in pipeline chain | P1 | Improvement | post-1.0 | High | Open |
+| 64 | Composable event handlers | P2 | Improvement | unscheduled | Medium | Open |
+| 65 | Registry factory with IServiceProvider | P2 | Improvement | unscheduled | Low | Open |
+| 66 | Synchronous ExecuteOutcome | P3 | Feature | unscheduled | Medium | Open |
 | 27 | Retry typed/untyped strategy duplication (4 loops) | P1 | Improvement | post-1.0 | Medium | Open |
 | 30 | FallbackAction/ResilienceEventHandler Task.Run missing token | P1 | Fix | post-1.0 | Low | Open |
 | 9 | Sync retry delay bypasses TimeProvider (untestable) | P1 | Fix | post-1.0 | Low | Open |
 | 54 | Evaluate multi-targeting net9.0 for System.Threading.Lock | P1 | Improvement | post-1.0 | Medium | Open |
 | 45 | Telemetry enrichment (MeteringEnricher, listeners) | P2 | Feature | unscheduled | High | Open |
-| 44 | IConfiguration binding for strategy options | P2 | Feature | unscheduled | Medium | Open |
+| 67 | Registry caches a failed pipeline build until invalidated | P2 | Improvement | unscheduled | Low | Open |
 | 40 | Resilion.Chaos — chaos engineering | P2 | Feature | unscheduled | High | Open |
 | 11 | Hedging: O(N²) WhenAny continuation registration (needs #54) | P2 | Improvement | unscheduled | Medium | Open |
-| 4 | Per-call delegate allocation in pipeline chain | P2 | Improvement | unscheduled | High | Open |
 | 5 | CancellationTokenSource pooling for Timeout | P2 | Improvement | unscheduled | Medium | Open |
 | 48 | Benchmark CI on PRs | P3 | Infrastructure | unscheduled | Low | Open |
 | 47 | CI code coverage collection | P3 | Infrastructure | unscheduled | Medium | **Blocked** |
@@ -59,69 +63,52 @@ already claims untrue, or produces a silently wrong answer.
 
 ## P1 — Next (post-1.0)
 
-### 39. Resilion.Http — HttpClient Integration
+### 62. Event Handler Properties Reject a Bare Lambda
 
 **Status:** Open
-**Type:** Feature
+**Type:** Improvement
 **Target:** post-1.0
-**Verified:** 2026-09-30 — no `src/Resilion.Http` directory; `grep -rn 'IHttpClientBuilder' src/` → 0 hits.
+**Verified:** 2026-10-23 — compiled `new RetryStrategyOptions { OnRetry = ctx => ... }` against the
+built `Resilion.dll`: `error CS1660`. A method group gives `error CS0428`. A typed local, an inline
+cast, and `new Action<TArgs>(...)` all compile.
 
 **Why**
 
-The most common use case for a resilience library is wrapping `HttpClient` calls. Polly's
-`Microsoft.Extensions.Http.Resilience` provides `AddStandardResilienceHandler()`, which adds a
-pre-configured pipeline to an `HttpClient` via `IHttpClientFactory`. Without an equivalent, Resilion
-misses the #1 onboarding path — and [comparison-with-polly.md](comparison-with-polly.md) says so
-outright.
+`ResilienceEventHandler<TArgs>` is a wrapper struct with implicit conversions from
+`Action<TArgs>` and `Func<TArgs, ValueTask>`. Implicit conversion does not help the compiler
+convert a *lambda*, because a lambda needs a delegate target type and this is not one. So the
+obvious syntax does not compile:
 
-**Design**
+```csharp
+// CS1660
+new RetryStrategyOptions { OnRetry = ctx => logger.LogWarning("retry {N}", ctx.AttemptNumber) };
 
-New package `Resilion.Http` with `AddStandardResilienceHandler()` on `IHttpClientBuilder`
-(RateLimiter → TotalRequestTimeout → Retry → CircuitBreaker → AttemptTimeout, retrying on 5xx, 429,
-408, `HttpRequestException` and `TimeoutRejectedException`), `AddStandardHedgingHandler()`, and
-`AddResilienceHandler(key, builder => …)`. Implemented as a `DelegatingHandler` wrapping a
-`Pipeline<HttpResponseMessage>`. References `Resilion.Extensions` and `Microsoft.Extensions.Http`.
+// CS0428
+new RetryStrategyOptions { OnRetry = LogRetry };
+```
 
-**It needs no `InternalsVisibleTo`** — every member required is public, because the typed `Add*`
-overloads call the internal tagged `AddStrategy` on our behalf (so ordering validation still works),
-and `ResilienceContextPool.Shared.Rent(ct)` plus `Pipeline<T>.ExecuteOutcomeAsync` cover context
-lifecycle and non-throwing execution.
+and the caller must write `new Action<RetryAttemptEvent>(ctx => ...)`, an inline cast, or a typed
+local instead.
 
-**Four design points that are easy to get wrong:**
+This matters more than a normal papercut because sync callback ergonomics is one of the five
+reasons `comparison-with-polly.md` gives for choosing this library, and Polly's plain-delegate
+properties *do* take a lambda. The README's own example was uncompilable from 1.0 until it was
+corrected — nobody had run it.
 
-1. **Never build the pipeline inside the `AddHttpMessageHandler` factory.** That factory re-runs on
-   every `IHttpClientFactory` handler rotation (default 2 minutes), so a pipeline built there would
-   reset circuit-breaker and rate-limiter state every 2 minutes — a silent correctness bug. Register
-   through `AddResiliencePipeline<HttpResponseMessage>(key, …)` and resolve from the registry.
-2. **Request reuse vs cloning.** Retrying the same `HttpRequestMessage` is what Polly does and is
-   legal (`HttpClient`'s "already sent" guard sits above the handler), but only for replayable
-   content. Offer an explicit `HttpRequestReplay` mode that buffers the body once and clones per
-   attempt, forced on for hedging (concurrent attempts cannot share one message).
-3. **Discarded responses must be disposed.** `RetryStrategy<T>` overwrites its outcome each loop and
-   hedging abandons losers, neither disposing. Leaked `HttpResponseMessage` instances hold sockets.
-   `OnRetry` cannot be used for this, because `ResilienceEventHandler<TArgs>.InvokeAsync` is internal
-   and a user-supplied handler can only be overwritten, not chained — so the handler needs its own
-   attempt tracker, including a "closed" state for hedging stragglers that complete after the handler
-   has already returned.
-4. **Override `Send` to throw.** `DelegatingHandler.Send` forwards to the inner handler, which would
-   silently bypass the entire resilience pipeline. `Pipeline<T>` has no synchronous `ExecuteOutcome`,
-   so a correct sync implementation isn't currently possible.
+**Possible fixes**
 
-**Known gap:** `Retry-After` honouring is impossible today, because `RetryDelay.Custom` receives only
-the attempt number. See the outcome-aware-retry-delay item below; it is the largest remaining
-functional gap versus Polly's HTTP package, and it matters most for the 429 responses this pipeline
-retries by default with blind exponential backoff.
+1. **Add `Action<TArgs>`-typed sibling properties** (`OnRetryAction` and friends) alongside the
+   existing ones, with the options record reconciling them. Purely additive, works on a frozen
+   surface, but doubles the callback surface and creates two ways to say one thing — which is
+   exactly what `RetryDelay`'s closed union exists to avoid.
+2. **Make the options properties plain `Action<TArgs>`** and move the sync-or-async union behind a
+   separate `...Async` property per callback. Cleanest to use, but a breaking change to every
+   options record, so 2.0 only.
+3. **Document it and accept it.** Current state. The implicit conversions still earn their keep —
+   a synchronous handler runs inline with no `ValueTask` allocation — the cost is brevity, not
+   performance.
 
-**Performance note:** HttpClient pipelines are a hot path in high-throughput services. The per-call
-delegate allocation (#4) is acceptable for general use but may start showing up in profiles once this
-package ships. Benchmark the standard handler under load — against
-`Microsoft.Extensions.Http.Resilience`, not hand-wrapped `Polly.Core`, or you are measuring our
-handler against our own Polly handler — and revisit #4 if it becomes a measurable cost.
-
-**Release note:** `release-nuget.yml` packs three projects by explicit path and hard-asserts a package
-count of 3. **That must become data-driven before this package lands**, or every release fails.
-
-**Effort:** High.
+Decide between (1) and (2) before 2.0 rather than drifting into (3) permanently.
 
 ---
 
@@ -290,6 +277,139 @@ so it stops reading as pending work.
 
 ---
 
+### 63. Outcome-Aware Retry Delay
+
+**Status:** Open
+**Type:** Feature
+**Target:** post-1.0
+**Verified:** 2026-10-23 — `RetryDelayContext` carries `AttemptNumber` only; no overload receives
+the outcome.
+
+**Why**
+
+`RetryDelay.Custom` receives `RetryDelayContext(AttemptNumber)`, so a delay cannot depend on what
+came back. That makes honouring a `Retry-After` header impossible, and `OnRetry` cannot help —
+it observes the attempt but cannot change the delay.
+
+This is the largest remaining functional gap against `Microsoft.Extensions.Http.Resilience`, and it
+bites by default: both libraries retry 429 out of the box, and Resilion does so on blind
+exponential backoff while the server is telling it exactly how long to wait.
+
+**Fix:** give the delay context the outcome — `RetryDelayContext<TResult>` carrying
+`Outcome<TResult>` alongside the attempt number. `Resilion.Http` can then map `Retry-After` to a
+delay without the core knowing anything about HTTP.
+
+---
+
+### 64. Composable Event Handlers
+
+**Status:** Open
+**Type:** Improvement
+**Target:** unscheduled
+**Verified:** 2026-10-23 — `grep -n 'internal.*Invoke' src/Resilion/ResilienceEventHandler.cs`.
+
+**Why**
+
+`ResilienceEventHandler<TArgs>`'s invocation is internal, so an out-of-package strategy or handler
+can only *replace* a user's `OnRetry`, never wrap it. `Resilion.Http` wanted to hook retry for
+response disposal and could not, which is why it carries its own attempt tracker instead.
+
+Any future package wanting to observe a user-supplied callback hits the same wall.
+
+---
+
+### 65. Registry Factory with IServiceProvider
+
+**Status:** Open
+**Type:** Improvement
+**Target:** unscheduled
+**Verified:** 2026-10-23 — `ResiliencePipelineRegistry.RegisterPipeline` takes
+`Action<PipelineBuilder<TResult>>` with no provider.
+
+**Why**
+
+A pipeline built lazily by the registry cannot resolve services, because the factory signature
+carries no `IServiceProvider`. `Resilion.Http` works around it with a small accessor the handler
+factory fills immediately before resolving the pipeline — deterministic, but indirection that an
+`Action<PipelineBuilder<TResult>, IServiceProvider>` overload would delete outright.
+
+---
+
+### 66. Synchronous ExecuteOutcome
+
+**Status:** Open
+**Type:** Feature
+**Target:** unscheduled
+**Verified:** 2026-10-23 — `Pipeline<TResult>` exposes `ExecuteOutcomeAsync` but no sync equivalent.
+
+**Why**
+
+`ExecuteOutcomeAsync` is what lets a caller see the winning outcome without it being thrown, which
+is how `Resilion.Http` identifies the response to keep and disposes the rest. There is no
+synchronous counterpart, so `HttpClient.Send` cannot be supported without either leaking responses
+or behaving differently from the async path — it throws `NotSupportedException` instead.
+
+---
+
+### 4. Per-Call Delegate Allocation in Pipeline Chain
+
+**Status:** Open
+**Type:** Improvement
+**Target:** post-1.0
+**Verified:** 2026-10-23 — `benchmarks/results/Resilion.Benchmarks.HttpResilienceHandlerBenchmarks-report-github.md`,
+full run, not ShortRun.
+
+**Why**
+
+`StrategyComponent.ExecuteAsync` creates the closure `ctx => _next.ExecuteAsync(callback, ctx)` per
+execution, so an N-strategy pipeline allocates N closures per call.
+
+**This is now the largest measured gap against Polly**, which is why it has moved from "accepted
+tradeoff, revisit if profiling shows it matters" to a priority. `Resilion.Http` was the workload
+the earlier write-up predicted would surface it:
+
+| | Total alloc | Over a bare client | Gen0 per 10k ops |
+|---|---:|---:|---:|
+| Bare `HttpClient` | 960 B | — | 1.14 |
+| Polly standard handler | 1,224 B | **264 B** | 1.45 |
+| Resilion standard handler | 2,624 B | **1,664 B** | 3.13 |
+
+The headline "2.1× Polly" understates it. The marginal cost of the resilience layer — what the
+library actually adds — is **6.3×** Polly's. A faint Gen1 collection appears on Resilion's retry
+arm and none on Polly's.
+
+**The previous decision rule was broken. Do not use it.**
+
+It said: act if "Gen0 collections exceed 1 per 10,000 operations". Measured against a baseline,
+that threshold fires on a **bare `HttpClient` with no resilience library at all** (1.14), and on
+Polly (1.45). A criterion that condemns the control group measures nothing, and running the
+benchmark under it would have produced a guaranteed "yes, redesign" carrying no information.
+
+**Corrected decision rule — relative to a control, not absolute.** Pursue the pre-composed
+delegate chain only if, at ~1 ms simulated per-call latency:
+
+1. **Throughput:** Resilion's handler is **>= 3% slower** than Polly's on the same pipeline shape.
+   Today Resilion is *faster* at zero latency, so this asks whether allocation reverses that once
+   real work exists.
+2. **GC pressure:** Resilion's Gen0 rate exceeds the **bare-client baseline** by more than **2×**.
+   Today it is 2.7× (3.13 vs 1.14), so this would currently trigger — and meaningfully, because
+   the baseline is subtracted out.
+3. **Promotion:** any sustained Gen1 or Gen2 activity attributable to the pipeline. Per-call
+   closures should die in Gen0; promotion means something is surviving and is worth understanding
+   whatever the throughput numbers say.
+
+**Open question before writing the benchmark: should it be concurrent?** Every benchmark in this
+repo is single-threaded, and allocation pressure is a concurrent phenomenon — one thread allocating
+1.6 KB/ms is nothing, two hundred in-flight requests doing the same is ~320 MB/s. Single-threaded
+measurement may be the reason this item looked harmless for as long as it did.
+
+**Note on scope.** The fix "requires complex generic type threading and may not be feasible without
+sacrificing API simplicity" — in a library whose pitch is simplicity, that remains close to
+disqualifying. The realistic outcome may be to accept the cost with the numbers documented, rather
+than to redesign. Deciding that honestly still needs the benchmark above.
+
+---
+
 ## P2 — Backlog
 
 ### 45. Telemetry Enrichment
@@ -329,7 +449,10 @@ benchmark should prove it.
 
 **The plumbing goes in core, not `Resilion.Extensions`** (an earlier draft of this entry said
 otherwise). The emit sites are in core and core cannot depend on Extensions. Extensions adds only the
-`ILogger` bridge — which is what finally justifies its unused `Logging.Abstractions` reference.
+`ILogger` bridge, which means re-adding the `Microsoft.Extensions.Logging.Abstractions` reference
+to `Resilion.Extensions`. It was removed before 1.0 rather than shipped dead: it had no
+references in any source file, so it made consumers restore a package for nothing and implied a
+logging integration that did not exist.
 
 **Be honest about severity:** core has no logger, so severity is only meaningful for suppression via
 `None` and for user listeners. Say that rather than implying log-level integration.
@@ -341,60 +464,48 @@ enrichment that silently doesn't apply on typed pipelines — worse than no enri
 
 ---
 
-### 44. `IConfiguration` Binding for Strategy Options
+
+### 67. Registry Caches a Failed Pipeline Build Until Invalidated
 
 **Status:** Open
-**Type:** Feature
+**Type:** Improvement
 **Target:** unscheduled
-**Depends on:** #41 (without reload, config changes still require a restart)
-**Verified:** 2026-09-30 — `grep -n 'private RetryDelay\|public static RetryDelay' src/Resilion/Retry/RetryDelay.cs`
-→ private constructor, factory methods only.
+**Verified:** 2026-10-23 — a probe registering a factory that throws on its first two builds, then
+resolving five times with invalidations in between. Builds 1–3 all rethrew *the same* exception
+instance from build 1 (`builds` counter stayed at 1); only `InvalidatePipeline` re-ran the factory.
 
 **Why**
 
-Bind strategy options from `appsettings.json` so timeouts, retry counts and thresholds can change
-without recompiling.
+`ResiliencePipelineRegistry.GetPipeline` caches each pipeline in a `Lazy<Pipeline>` built with the
+default `LazyThreadSafetyMode.ExecutionAndPublication`, which **caches the exception** when the
+factory throws. So a `configure` delegate that fails — bad values from a reload, a dependency that
+was not ready at first resolve — leaves that key permanently broken: every later `GetPipeline`
+rethrows the stored exception without re-running the factory.
 
-**Design — do not make `RetryDelay` bindable.**
+The lookup guard above the `Lazy` only covers an *unknown key*; it does nothing for a factory that
+throws.
 
-`RetryDelay` is a closed union with a private constructor, deliberately not independent properties
-([comparison-with-polly.md](comparison-with-polly.md)). Making it bindable reintroduces exactly the
-Polly ambiguity this library rejected.
+With reload wired up this self-heals, because the next options change invalidates the key. Without
+it, the key is broken for the process lifetime. The failure is also confusing to diagnose: the
+exception's stack trace points at the first resolve, which may be long past.
 
-Instead add a one-way **binding DTO layer** in a `Resilion.Extensions.Configuration` namespace:
-mutable POCOs with parameterless constructors (what `ConfigurationBinder` and its source generator
-require) plus a `ToOptions()` projection into the real `sealed record` options. The union stays
-closed; the DTO is a validated funnel into it.
+**Current mitigation:** documented in [dynamic-reload.md](dynamic-reload.md), and
+`InvalidatePipeline` returns `true` for a cached failure, so a caller can clear one deliberately.
 
-Prevent ambiguity with an **explicit discriminator plus a throwing validator**, not by hoping:
-`RetryDelayConfiguration.Kind` selects the variant, and `ToRetryDelay()` **throws** when a property is
-set that the chosen `Kind` ignores (e.g. `Kind = Constant` with `MaxDelay` set, since
-`RetryDelay.Constant` has no cap). Silently ignoring it is what Polly does and what this library
-exists not to do. **`Custom` is deliberately absent from the kind enum** — a delegate cannot come from
-JSON, and pretending otherwise is the ambiguity in a new costume.
+**Possible fixes**
 
-Delegates are not on the DTOs at all. Users layer them with a record `with` expression:
+1. **Do not cache the failure** — catch inside the `Lazy` factory, remove the entry from
+   `_pipelines`, rethrow. The next resolve then retries. Risk: a factory that always throws is now
+   re-run on every call, which under load turns one cached exception into a hot loop of failing
+   builds.
+2. **`LazyThreadSafetyMode.PublicationOnly`**, which does not cache exceptions. Same retry-storm
+   risk, and it permits concurrent factory execution, so two callers could build two pipelines and
+   one gets discarded — unacceptable while a pipeline may own a circuit breaker.
+3. **Keep the caching, add a documented escape hatch.** Current state, plus the `InvalidatePipeline`
+   route above.
 
-```csharp
-services.Configure<RetryStrategyConfiguration>(config.GetSection("Resilience:Api:Retry"));
-services.AddResiliencePipeline<RetryStrategyConfiguration>("api", (b, c) =>
-    b.AddRetry(c.ToOptions() with { ShouldHandle = ex => ex is HttpRequestException }));
-```
-
-Every DTO default must mirror the corresponding options record exactly, so "bind nothing" ≡ "pass no
-options". Drift there is a silent bug; pin it with tests.
-
-No new package dependency — the DTOs are plain POCOs, so the consumer's own
-`Microsoft.Extensions.Options.ConfigurationExtensions` does the binding.
-
-**Explicitly out of scope: whole pipelines from JSON** — a strategy array with type discriminators and
-ordering from config. It would put `OrderingValidator`'s guarantees at the mercy of a JSON file while
-still requiring code for every predicate: half-configured pipelines with worse diagnostics. Say so in
-the docs.
-
-**Effort:** Medium.
-
----
+(1) with a short backoff is the only one that improves on today without a new hazard, and it is not
+obviously worth the machinery. Decide only if someone hits it.
 
 ### 40. Resilion.Chaos — Chaos Engineering
 
@@ -485,55 +596,6 @@ written — the comment at `:74-77` explains why it deliberately awaits the stor
 calling `WhenAny` twice. `:143` is the cleanup timeout.
 
 **Effort:** Medium, and gated.
-
----
-
-### 4. Per-Call Delegate Allocation in Pipeline Chain
-
-**Status:** Open
-**Type:** Improvement
-**Target:** unscheduled
-**Verified:** 2026-09-30 — `grep -n 'ctx => _next.ExecuteAsync' src/Resilion/Internal/PipelineComponent.cs`
-→ `:70`.
-
-**Why**
-
-In `StrategyComponent.ExecuteAsync`, the lambda `ctx => _next.ExecuteAsync(callback, ctx)` creates a
-closure capturing `_next` and `callback` on every call. In a pipeline with N strategies that is N small
-closure allocations per execution.
-
-**Current state**
-
-Inherent to the middleware/chain-of-responsibility pattern; Polly v8 has the same cost. Confirmed
-empirically in [benchmarks/results](../benchmarks/results/README.md): Resilion's happy-path pipelines
-allocate a few hundred bytes where Polly's are allocation-free, but Resilion is still faster
-wall-clock across every shape benchmarked.
-
-This item is tracked **here only**. [tradeoffs.md](tradeoffs.md) previously also carried it as an
-accepted imperfection, which meant the repo simultaneously claimed the fix was worse than the problem
-and that the fix was planned. That duplicate now points here.
-
-**The measurement that would settle it is missing.** Every current benchmark uses a
-synchronous-completing no-op callback, which maximizes the *relative* weight of the allocations and
-says nothing about whether they matter. Add an `AllocationImpactBenchmarks` using the real-world
-pipeline shape with a callback simulating **1 ms of I/O**, `[MemoryDiagnoser]`, and Gen0 collections
-reported per 10 000 operations.
-
-**Decision rule:** pursue the pre-composed-delegate-chain redesign only if, at 1 ms per-call latency,
-**either** the allocation difference moves throughput by **>= 3%**, **or** Gen0 collections exceed
-**1 per 10 000 operations**.
-
-**Expected outcome: both false.** At 1 ms/op, ~976 B/op is under 1 MB/s of Gen0 traffic — inside the
-noise for any .NET server. **If so, close this as "measured, won't fix"** rather than leaving it as
-"revisit", and record the numbers. What would reopen it: a Gen0 allocation profile from a real
-workload — most plausibly one surfaced by `Resilion.Http` (#39) — showing these closures in the top
-five allocators.
-
-Note also that the proposed fix "requires complex generic type threading and may not be feasible
-without sacrificing API simplicity". In a library whose entire pitch is simplicity, that is close to
-disqualifying on its own.
-
-**Effort:** High.
 
 ---
 
@@ -701,7 +763,9 @@ Numbers that have left the active list. **Never reuse a number.**
 | 58 | telemetry.md documents span tags that don't exist | Fixed — documented tag set now matches the code. |
 | 59 | Hedging drops PipelineName on per-attempt contexts | Fixed. See CHANGELOG `[Unreleased]`. |
 | 60 | Typed-strategy result mismatch silently skips the strategy | Fixed — now throws `InvalidOperationException`. |
+| 44 | `IConfiguration` binding for strategy options | Done — five bindable DTOs in `Resilion.Extensions.Configuration`. See CHANGELOG `[Unreleased]` and [configuration.md](configuration.md). |
 | 61 | README's synchronous-execution claims are broader than the truth | Fixed — claim scoped, four exceptions documented. |
+| 39 | Resilion.Http — HttpClient integration | Implemented. See CHANGELOG `[Unreleased]`. Residual gaps filed as #63–#66. |
 | 10 | Resilion.Testing package | Deferred; the two core gaps behind it (`CircuitBreakerStateProvider`, public `Pipeline.Name`) shipped instead. See CHANGELOG `[Unreleased]`. |
 | 12 | Hedging: HedgingDelayGenerator | Implemented. See CHANGELOG `[Unreleased]`. |
 | 41 | Pipeline dynamic reload via IOptionsMonitor | Implemented. See CHANGELOG `[Unreleased]`. |

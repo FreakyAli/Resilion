@@ -48,6 +48,55 @@ worth separating them:
   `ShortRun` configuration rather than the fix. Treat cross-run wall-clock deltas under `ShortRun`
   (3 iterations) as indicative only; allocation figures are deterministic and comparable.
 
+## HttpClient handler overhead
+
+`Resilion.Http`'s standard handler against `Microsoft.Extensions.Http.Resilience` 8.10.0, both
+through a real `IHttpClientFactory` graph with an in-memory primary handler, so no socket is
+touched and what remains is pipeline plus per-request bookkeeping.
+
+Unlike the other tables on this page, this one is a **full run**, not `ShortRun` — at three
+iterations the error bars were ±25% and could not separate the two libraries at all. These are
+±0.4%.
+
+| Benchmark | Mean | Allocated |
+|-----------|-----:|----------:|
+| Bare `HttpClient` (no resilience) | 287 ns ± 1 | 960 B |
+| Resilion — standard handler, happy path | 1,102 ns ± 4 | 2,624 B |
+| Polly — standard handler, happy path | 1,127 ns ± 8 | 1,224 B |
+| Resilion — standard handler, one retry | 1,552 ns ± 7 | 3,288 B |
+| Polly — standard handler, one retry | 1,735 ns ± 26 | 1,576 B |
+
+**Time:** Resilion is 2.3% faster on the happy path and 10.6% faster when a retry fires. Both
+differences are real — the confidence intervals do not overlap — and both are irrelevant in
+practice: the whole handler costs ~815 ns on a call that in production does 1–100 ms of I/O.
+
+**Allocation:** the number worth looking at. Resilion allocates 2.1× Polly's total, but the
+*marginal* cost of the resilience layer is the sharper figure: over the 960 B a bare client already
+allocates, Resilion's handler adds **1,664 B against Polly's 264 B — 6.3×**. A faint Gen1 collection
+appears on Resilion's retry arm and none on Polly's.
+
+That comes from the per-strategy closures of [future-plans.md](../../docs/future-plans.md) item #4
+— five strategies, one closure each, per call — plus one attempt-tracker per request, which is what
+disposes discarded responses.
+
+**What this does not measure, and it matters:** there is no I/O and no concurrency here. Item #4's
+decision rule calls for a benchmark with ~1 ms of simulated per-call latency, measuring Gen0
+collections per 10,000 operations, and that benchmark has not been written. Until it is, this table
+says Resilion allocates substantially more per HTTP call and says nothing about whether that costs
+a real service anything.
+
+Both arms were equalised deliberately, and the comparison is worthless without this:
+
+- **Five strategies against five.** Polly 8.x's standard handler enables a 1000-permit concurrency
+  limiter by default and Resilion's does not, so the Resilion arm enables one explicitly.
+- **Retry present in both, in every benchmark.** Polly validates `MaxRetryAttempts >= 1` and
+  Resilion permits 0; disabling it on the happy-path arm would have given Resilion a four-strategy
+  pipeline against Polly's five — a structural advantage reported as a speed one.
+- **Circuit breaker present but never opening.** The retry arm fails every request once, a
+  sustained ~50% failure rate that trips both libraries' 10%-over-100-samples defaults and aborts
+  the run, so the threshold is raised to 1.0 on both rather than removing the strategy.
+- Zero retry delay on both; each benchmark disposes the response it receives.
+
 ## Real-world scenario patterns
 
 | Benchmark | Mean | Allocated |

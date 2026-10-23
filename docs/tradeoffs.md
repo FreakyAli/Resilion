@@ -44,9 +44,11 @@ The cap check (`Interlocked.Increment(ref _count) <= _maxPoolSize`) followed by 
 
 ---
 
-## ~~Timeout cancellation classification has a narrow race window~~ — MOVED
+## ~~Timeout cancellation classification has a narrow race window~~ — FIXED
 
-This was a solvable issue, not a true tradeoff. Moved to [future-plans.md](future-plans.md) as **#46** (P2 fix).
+This was a solvable issue, not a true tradeoff. It was tracked as future-plans #46, fixed by
+recording the first cancellation cause atomically, and that entry has since been retired. The cost
+of the fix is the next entry below; see `CHANGELOG.md`.
 
 ---
 

@@ -77,7 +77,8 @@ public static class ResilionHttpClientBuilderExtensions
         var accessor = Register(
             builder,
             pipelineKey,
-            b => HttpPipelineFactory.ConfigureStandard(b, configure, AccessorServices(b, pipelineKey)));
+            acc => b => HttpPipelineFactory.ConfigureStandard(
+                b, configure, AccessorServices(acc, pipelineKey)));
 
         // RequestReplay lives on the options, which are not materialised until the pipeline is
         // built — but the handler needs it at construction. Resolve it by building the options
@@ -150,7 +151,8 @@ public static class ResilionHttpClientBuilderExtensions
         var accessor = Register(
             builder,
             pipelineKey,
-            b => HttpPipelineFactory.ConfigureHedging(b, configure, AccessorServices(b, pipelineKey)));
+            acc => b => HttpPipelineFactory.ConfigureHedging(
+                b, configure, AccessorServices(acc, pipelineKey)));
 
         // Hedged attempts can overlap, so cloning is mandatory and eager disposal is unsafe.
         return AddHandler(
@@ -234,7 +236,8 @@ public static class ResilionHttpClientBuilderExtensions
         var accessor = Register(
             builder,
             pipelineKey,
-            b => HttpPipelineFactory.ConfigureCustom(b, configure, AccessorServices(b, pipelineKey)));
+            acc => b => HttpPipelineFactory.ConfigureCustom(
+                b, configure, AccessorServices(acc, pipelineKey)));
 
         // A caller-built pipeline may contain hedging, so attempts cannot be assumed sequential.
         return AddHandler(builder, pipelineKey, accessor, sequentialAttempts: false, _ => requestReplay);
@@ -252,19 +255,21 @@ public static class ResilionHttpClientBuilderExtensions
     private static string PipelineKey(IHttpClientBuilder builder, string kind)
         => $"{builder.Name}/{kind}";
 
+    /// <summary>
+    /// Registers the pipeline, handing the caller's factory an accessor it closes over.
+    /// </summary>
     private static RootProviderAccessor Register(
         IHttpClientBuilder builder,
         string pipelineKey,
-        Action<PipelineBuilder<HttpResponseMessage>> configure)
+        Func<RootProviderAccessor, Action<PipelineBuilder<HttpResponseMessage>>> configureFactory)
     {
         ThrowIfKeyAlreadyRegistered(builder, pipelineKey);
 
         var accessor = new RootProviderAccessor();
-        AccessorRegistry[pipelineKey] = accessor;
 
         builder.Services.TryAddSingleton<HttpResilienceRootProvider>();
         builder.Services.AddSingleton(new ResilionHttpPipelineMarker(pipelineKey));
-        builder.Services.AddResiliencePipeline<HttpResponseMessage>(pipelineKey, configure);
+        builder.Services.AddResiliencePipeline<HttpResponseMessage>(pipelineKey, configureFactory(accessor));
 
         return accessor;
     }
@@ -292,21 +297,17 @@ public static class ResilionHttpClientBuilderExtensions
     }
 
     /// <summary>
-    /// Maps a pipeline key to the accessor holding its root provider.
+    /// Reads the root provider an accessor is holding, failing loudly if it is not there yet.
     /// </summary>
     /// <remarks>
-    /// Static because the registry's factory signature carries no state of its own. Keyed by the
-    /// pipeline key, which is unique per client per kind.
+    /// The accessor is captured by the registration closure rather than looked up in a static
+    /// map. An earlier version keyed a static dictionary by pipeline key, which collides across
+    /// service collections: two containers in one process registering the same client name would
+    /// overwrite each other's accessor and cross-wire their root providers.
     /// </remarks>
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, RootProviderAccessor>
-        AccessorRegistry = new();
-
-    private static IServiceProvider AccessorServices(
-        PipelineBuilder<HttpResponseMessage> builder,
-        string pipelineKey)
-        => AccessorRegistry.TryGetValue(pipelineKey, out var accessor) && accessor.Services is { } services
-            ? services
-            : throw new InvalidOperationException(
+    private static IServiceProvider AccessorServices(RootProviderAccessor accessor, string pipelineKey)
+        => accessor.Services
+            ?? throw new InvalidOperationException(
                 $"The root service provider for pipeline '{pipelineKey}' was not available when " +
                 "the pipeline was built. This should be unreachable: the handler factory assigns " +
                 "it immediately before resolving the pipeline.");

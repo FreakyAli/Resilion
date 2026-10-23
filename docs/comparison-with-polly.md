@@ -32,14 +32,22 @@ they aren't fake-clock testable. Custom strategies must override `Execute` thems
 `RetryDelay.Constant/Linear/Exponential/Custom` are mutually exclusive by construction. There's
 exactly one way to configure the delay strategy, and the compiler enforces it.
 
-**Sync callback ergonomics.** Polly's callbacks (`OnRetry`, `OnOpened`, ...) always return
-`ValueTask`, even for a callback that just increments a counter or writes a log line — the 90%
-case. Resilion's `ResilienceEventHandler<TArgs>` accepts a plain `Action<TArgs>` *or* an async
-`Func<TArgs, ValueTask>` via implicit conversion, so the common synchronous case pays nothing
-for `ValueTask` wrapping.
+**Sync callbacks don't pay for `ValueTask`.** Polly's callbacks (`OnRetry`, `OnOpened`, ...) always
+return `ValueTask`, even for a callback that just increments a counter or writes a log line — the
+90% case. Resilion's `ResilienceEventHandler<TArgs>` accepts a plain `Action<TArgs>` *or* an async
+`Func<TArgs, ValueTask>` via implicit conversion, so the common synchronous case runs inline with
+no wrapping.
+
+Honest caveat on the ergonomics, as opposed to the cost: because `ResilienceEventHandler<TArgs>` is
+a wrapper rather than a delegate type, you must name the delegate — `new Action<RetryAttemptEvent>(ctx => ...)`,
+an inline cast, or a typed local. A bare lambda or a method group will not convert. Polly's
+plain-delegate properties take a lambda directly, so Polly wins on brevity here while Resilion wins
+on not allocating a `ValueTask` for a log line. Tracked for a future version — see
+[future-plans.md](future-plans.md).
 
 **Simpler API surface.** One static factory (`Pipeline.Create`), one builder per pipeline
-kind, options classes that read the same way every time. No `PredicateBuilder`, no
+kind, options classes that read the same way every time. No mandatory `PredicateBuilder` (there
+is one if you want it, but a plain `Func<Outcome<T>, bool>` is always enough), no
 `ResiliencePropertyKey` juggling beyond what you actually need. Less to learn before you're
 productive.
 
@@ -47,18 +55,15 @@ productive.
 
 ## Where Polly is better today
 
-**`IHttpClientFactory` integration.** Polly's `Microsoft.Extensions.Http.Resilience` package
-gives you `AddStandardResilienceHandler()` — a pre-configured 5-strategy pipeline wired
-directly into `HttpClient` with one line. This is the single most common resilience use case,
-and Resilion doesn't have an equivalent yet. If you need this today, use Polly (or wrap
-`Resilion` in your own `DelegatingHandler` in the meantime).
+**HTTP specifics Polly's handler still does better.** Both libraries now give you
+`AddStandardResilienceHandler()` on `IHttpClientBuilder` (see [http.md](http.md)), but Polly's
+package additionally honours `Retry-After` on 429 and 503 responses, supports per-endpoint hedging
+routing, works with synchronous `HttpClient.Send`, and binds its standard options from
+`IConfiguration`. Resilion does none of those yet; `Retry-After` is the one most likely to matter,
+since both libraries retry 429 by default and Resilion does so on blind exponential backoff.
 
 **Chaos engineering.** Polly ships Simmy — fault, outcome, latency, and behavior injection for
 resilience testing in non-production environments. Resilion has no equivalent.
-
-**Dynamic reload.** Polly pipelines can auto-recreate when bound `IOptionsMonitor<T>` options
-change. Resilion's pipelines are immutable once built; changing configuration means building a
-new one and swapping it in yourself.
 
 **A dedicated testing package.** Polly has patterns and (community) packages for asserting on
 pipeline behavior in tests. Resilion doesn't have a `Resilion.Testing` package yet — you write
@@ -69,9 +74,17 @@ fine but isn't packaged up for you.
 number of .NET codebases since well before Resilion existed. If your organization needs that
 track record as a prerequisite, Polly is the safer choice right now.
 
-**`PredicateBuilder<T>` fluent API.** Polly's `new PredicateBuilder<T>().Handle<TException>().HandleResult(...)`
-composes predicates without writing the lambda by hand. Resilion requires the full
-`Func<Outcome<T>, bool>` — more explicit, more verbose for complex predicates.
+## Gaps that have closed
+
+These were listed here as reasons to choose Polly and no longer are:
+
+| Was | Now |
+|-----|-----|
+| `IHttpClientFactory` integration | `Resilion.Http` — see [http.md](http.md) |
+| `PredicateBuilder<T>` fluent API | `PredicateBuilder<T>` and `PredicateBuilder` ship in core |
+| Dynamic reload via `IOptionsMonitor` | `AddResiliencePipeline<TOptions>` rebuilds on options change |
+| A way to observe circuit state | `CircuitBreakerStateProvider` |
+| `IConfiguration` binding for strategy options | `Resilion.Extensions.Configuration` DTOs with `ToOptions()` |
 
 ## Roadmap to close the gap
 
@@ -80,13 +93,8 @@ Every item above that Resilion doesn't have yet is tracked with a concrete desig
 
 | Feature | Priority | Target | future-plans.md item |
 |---------|----------|--------|----------------------|
-| `PredicateBuilder<T>` fluent API | High | post-1.0 | #43 |
-| Dynamic reload via `IOptionsMonitor` | High | post-1.0 | #41 |
-| `Resilion.Http` — `IHttpClientFactory` integration | Highest | post-1.0 | #39 |
 | `Resilion.Chaos` — chaos engineering | Medium | unscheduled | #40 |
-| `IConfiguration` binding for strategy options | Lower | unscheduled | #44 |
 | Telemetry enrichment | Lower | unscheduled | #45 |
-| `Resilion.Testing` — test doubles, assertions | Lower | deferred | #10 |
 
 **None of these ship in 1.0.** 1.0 is scoped to making what the library already claims actually
 true — see the P0 section of [future-plans.md](future-plans.md). These are capabilities Resilion
@@ -94,6 +102,12 @@ true — see the P0 section of [future-plans.md](future-plans.md). These are cap
 
 Numbers refer to entries in [future-plans.md](future-plans.md). If a number here has no entry
 there, that is a bug in the docs — see [verification.md](verification.md).
+
+A `Resilion.Testing` package is **not** on this list any more. It was deferred rather than
+scheduled: the two things it would actually have provided that nothing else could — a way to read
+circuit state, and a public pipeline name — shipped in the core library instead, and the rest
+(`FakeTimeProvider`, `ResilienceContextPool.Shared.Rent`, `MeterListener`) already works without a
+package. See [testing.md](testing.md).
 
 If one of these is a hard blocker for you today, Polly remains the right choice until Resilion
 catches up. If it isn't, Resilion is a smaller, simpler, equally-capable core for everything

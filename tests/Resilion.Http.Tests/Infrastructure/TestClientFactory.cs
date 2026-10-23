@@ -14,18 +14,20 @@ internal static class TestClientFactory
     internal static (ServiceProvider Provider, HttpClient Client) Build(
         StubHttpMessageHandler stub,
         Action<IHttpClientBuilder> configureResilience,
-        Action<IServiceCollection>? configureServices = null)
+        Action<IServiceCollection>? configureServices = null,
+        string? clientName = null)
     {
         var services = new ServiceCollection();
         configureServices?.Invoke(services);
 
-        var builder = services.AddHttpClient(ClientName)
+        var builder = services.AddHttpClient(clientName ?? ClientName)
             .ConfigurePrimaryHttpMessageHandler(() => stub);
 
         configureResilience(builder);
 
         var provider = services.BuildServiceProvider();
-        var client = provider.GetRequiredService<IHttpClientFactory>().CreateClient(ClientName);
+        var client = provider.GetRequiredService<IHttpClientFactory>()
+            .CreateClient(clientName ?? ClientName);
 
         return (provider, client);
     }

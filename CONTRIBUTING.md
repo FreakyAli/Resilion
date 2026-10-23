@@ -144,7 +144,10 @@ and says how many times the failure was reproduced.
 [`docs/tradeoffs.md`](docs/tradeoffs.md) holds accepted imperfections; `future-plans.md` holds
 planned fixes. **An issue must be in exactly one of them** — being in both means the repo claims
 simultaneously that the fix isn't worth doing and that it's planned. When an item moves, leave a
-struck-through `— MOVED` stub behind; see the two existing examples in `tradeoffs.md`.
+struck-through `— MOVED` stub behind; see the "Per-call delegate allocation in pipeline chain"
+example in `tradeoffs.md`. Once the moved item is actually resolved, the stub says so — see
+"Timeout cancellation classification" in the same file — so the stub never implies pending work
+that no longer exists.
 
 ## Reporting Issues
 

@@ -20,6 +20,7 @@ This gives you retry, circuit breaker, timeout, fallback, and hedging — zero e
 |---------|----------------|
 | `Resilion` | Always — core library with all built-in strategies, zero dependencies |
 | `Resilion.RateLimiting` | When you need rate limiting (wraps `System.Threading.RateLimiting`) |
+| `Resilion.Http` | When you call HTTP APIs through `IHttpClientFactory` or `HttpClient` |
 | `Resilion.Extensions` | When you use DI (`IServiceCollection`) for dependency injection |
 
 > **OpenTelemetry metrics**: The `ResilionTelemetry` meter is defined in the core `Resilion` package and can be consumed independently. The `Resilion.Extensions` package provides convenient integration with `IServiceCollection` for DI-based registration.
@@ -29,14 +30,27 @@ This gives you retry, circuit breaker, timeout, fallback, and hedging — zero e
 ## Dependency graph
 
 ```text
-Resilion                          (zero dependencies)
+Resilion                      (zero dependencies)
   ↑
-  ├── Resilion.Extensions         (+ Microsoft.Extensions.*)
+  ├── Resilion.RateLimiting   + System.Threading.RateLimiting
   │
-  └── Resilion.RateLimiting       (+ System.Threading.RateLimiting)
+  ├── Resilion.Extensions     + Microsoft.Extensions.DependencyInjection.Abstractions
+  │                           + Microsoft.Extensions.Options
+  │
+  └── Resilion.Http           + Microsoft.Extensions.Http
+                              + Resilion.Extensions, Resilion.RateLimiting
 ```
 
-`Resilion.Extensions` and `Resilion.RateLimiting` both reference `Resilion` — NuGet pulls it in transitively.
+Every satellite package references `Resilion` — NuGet pulls it in transitively, so installing one
+is enough.
+
+`Resilion.Http` depends on `Resilion.RateLimiting` even though **its rate limiter is off by
+default**, because `HttpStandardResilienceOptions.RateLimiter` is typed
+`RateLimiterStrategyOptions?` and that type has to be resolvable to use the options at all. You
+pay one small package reference; you do not get a rate limiter unless you configure one.
+
+There is no `ILogger` dependency anywhere. Resilion emits metrics and spans from the core package,
+and anything you want logged goes through a callback you write, so your logger stays yours.
 
 ---
 

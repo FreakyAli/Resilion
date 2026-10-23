@@ -21,12 +21,17 @@
 
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" Version="0.14.0" />
+    <!-- Benchmark-only, never shipped. Polly.Core alone cannot express what is being compared
+         here: the DelegatingHandler + IHttpClientFactory shape. Hand-wrapping Polly.Core in our
+         own handler would measure Resilion against our Polly handler, not the one users adopt. -->
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="8.10.0" />
     <PackageReference Include="Polly.Core" Version="8.5.2" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Resilion\Resilion.csproj" />
     <ProjectReference Include="..\..\src\Resilion.RateLimiting\Resilion.RateLimiting.csproj" />
+    <ProjectReference Include="..\..\src\Resilion.Http\Resilion.Http.csproj" />
   </ItemGroup>
 
 </Project>

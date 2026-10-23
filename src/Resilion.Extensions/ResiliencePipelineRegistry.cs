@@ -57,7 +57,9 @@ public sealed class ResiliencePipelineRegistry<TKey> : IPipelineProvider<TKey>, 
     /// <exception cref="KeyNotFoundException">No pipeline is registered with the specified key.</exception>
     public Pipeline GetPipeline(TKey key)
     {
-        // Validate factory exists before creating Lazy to prevent caching faulted entries
+        // Look the factory up before creating the Lazy, so an unknown key throws without leaving a
+        // cache entry behind. Note this does NOT cover a factory that throws: that exception is
+        // cached by the Lazy and rethrown until the key is invalidated. See future-plans #67.
         if (!_factories.TryGetValue(key, out var factory))
         {
             throw new KeyNotFoundException($"No pipeline registered with key '{key}'.");
@@ -83,7 +85,9 @@ public sealed class ResiliencePipelineRegistry<TKey> : IPipelineProvider<TKey>, 
     {
         var compositeKey = (key, typeof(TResult));
 
-        // Validate factory exists before creating Lazy to prevent caching faulted entries
+        // Look the factory up before creating the Lazy, so an unknown key throws without leaving a
+        // cache entry behind. Note this does NOT cover a factory that throws: that exception is
+        // cached by the Lazy and rethrown until the key is invalidated. See future-plans #67.
         if (!_typedFactories.TryGetValue(compositeKey, out var factory))
         {
             throw new KeyNotFoundException(

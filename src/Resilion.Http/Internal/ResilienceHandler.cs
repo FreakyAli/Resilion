@@ -138,11 +138,17 @@ internal sealed class ResilienceHandler : DelegatingHandler
         SendState state,
         ResilienceContext context)
     {
-        var attempt = state.Tracker.BeginAttempt();
+        // Return value unused: the index only mattered to the old per-attempt branch. The call
+        // itself is load-bearing — it is what triggers eager disposal of the previous response.
+        state.Tracker.BeginAttempt();
 
-        var message = attempt == 0 && _replay == HttpRequestReplay.ReuseRequest
+        // ReuseRequest reuses the original on EVERY attempt, not just the first. Cloning a
+        // later attempt here would clone against a null buffered body — this mode never buffers —
+        // and silently send an empty request, which is why the condition is on the mode alone.
+        var message = _replay == HttpRequestReplay.ReuseRequest
             ? state.Request
             : HttpRequestMessageCloner.Clone(state.Request, state.BufferedContent);
+
 
         // Overwritten per attempt so GetRequestMessage() from a callback sees this attempt's
         // message rather than the first one's.

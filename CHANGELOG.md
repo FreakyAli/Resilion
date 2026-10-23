@@ -9,6 +9,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`Resilion.Http` — `HttpClient` and `IHttpClientFactory` integration.** The most common use for
+  a resilience library, and the one gap `comparison-with-polly.md` told readers to use Polly for.
+  `AddStandardResilienceHandler()` on `IHttpClientBuilder` gives rate limiting, a total timeout,
+  retry, a circuit breaker and a per-attempt timeout, retrying 5xx, 408, 429,
+  `HttpRequestException` and `TimeoutRejectedException`. `AddStandardHedgingHandler()` swaps retry
+  for hedging; `AddResilienceHandler(key, …)` takes a pipeline you build. Also
+  `HttpResiliencePredicates`, `HttpRequestReplay`, and `ResilienceContext.GetRequestMessage()`.
+  See [docs/http.md](docs/http.md)
+  - **The pipeline is built once and cached in the registry, never in the handler factory.** That
+    factory re-runs on every `IHttpClientFactory` handler rotation — two minutes by default — so a
+    pipeline built there would silently reset the circuit breaker's window on each one, leaving a
+    breaker that can essentially never trip, with no symptom a user could attribute to this
+    library. Pinned by a test that fails if the pipeline stops being cached
+  - **Responses from losing attempts are disposed.** The pipeline discards non-final outcomes
+    without disposing them, and an undisposed response holds its connection, so without this a
+    retry-heavy client exhausts its pool. Disposal is eager where attempts cannot overlap, and
+    covers hedged stragglers that answer after the handler has already returned
+  - **`HttpRequestReplay`** chooses whether each attempt sends your request or an independent
+    clone. `ReuseRequest` (default) matches Polly and costs nothing; `CloneRequest` buffers the
+    body once and is required for non-replayable content or header-mutating inner handlers. The
+    hedging handler always clones, since concurrent attempts cannot share one request
+  - **Rate limiting is off by default**, unlike `Microsoft.Extensions.Http.Resilience` 8.x (9.x
+    also removed it). A `RateLimiter`'s lifetime belongs to its creator, so enabling one by default
+    would mean this package silently owning a limiter and throttling any application above its
+    permit count
+  - **`HttpClient.Send` throws `NotSupportedException`.** `DelegatingHandler.Send` forwards
+    straight to the inner handler, so without the override a synchronous caller would bypass the
+    entire pipeline and believe it was protected
+  - Known limitations, all documented: no `Retry-After` honouring, no synchronous send, no
+    per-endpoint hedging routing. Tracked as #63 and #66
+- Benchmarks for the HTTP handler against `Microsoft.Extensions.Http.Resilience` 8.10.0 through a
+  real `IHttpClientFactory` graph, at full iteration count rather than `ShortRun` because three
+  iterations could not separate the two libraries. Resilion is 2.3% faster on the happy path and
+  10.6% faster with a retry — both real, both irrelevant beside real I/O — while allocating 2.1×
+  the total, or 6.3× the marginal cost over a bare client. Both arms were equalised deliberately — five strategies
+  each, retry present in both (Polly validates `MaxRetryAttempts >= 1`, Resilion permits 0, and
+  disabling it would have compared four strategies against five), and a breaker present but with
+  its threshold raised so a benchmark's sustained failure rate cannot trip it
+
 - `PredicateBuilder<TResult>` and `PredicateBuilder` — compose a strategy's `ShouldHandle` from
   `Handle<TException>()`, `HandleInner<TException>()` and `HandleResult(...)` clauses instead of
   writing the delegate by hand, with an implicit conversion so a builder can be assigned directly.
@@ -51,8 +90,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `AddResiliencePipeline` overload with `TryAddKeyedSingleton`, so a duplicate call does not add a
   second descriptor. **Incompatible with reload by construction** (a keyed singleton resolves once
   for the container's lifetime), which is documented on both sides and pinned by a test
+- `Resilion.Extensions.Configuration` — five bindable DTOs (`RetryStrategyConfiguration`,
+  `RetryDelayConfiguration`, `TimeoutStrategyConfiguration`, `CircuitBreakerStrategyConfiguration`,
+  `HedgingStrategyConfiguration`) that project into the real options records with `ToOptions()`.
+  The options records are `sealed record` types with `init`-only members and `RetryDelay` is a
+  closed union with a private constructor, so neither is bindable — and making the union bindable
+  would reintroduce exactly the contradictory-delay-properties ambiguity it exists to prevent.
+  See [docs/configuration.md](docs/configuration.md)
+  - **Every DTO default mirrors its options record exactly**, so binding nothing is identical to
+    passing no options. Drift would be a silent behaviour change, so each pair is asserted field by
+    field
+  - **The delay cap lives on the strategy, not the delay.** `RetryStrategyConfiguration.MaxDelay`
+    applies to every backoff kind including `Constant`, whose factory takes no maximum at all;
+    a second cap on `RetryDelayConfiguration` would be two knobs for one thing
+  - **`RetryDelayKind` has no `Custom` member** and the DTOs carry no delegate properties —
+    `ShouldHandle`, `OnRetry` and the generators cannot come from a file, and a property that
+    silently does nothing when bound is worse than no property. Layer them on with a record `with`
+    expression, which needs no extra API
+  - Whole pipelines from JSON remain deliberately out of scope: it would make `OrderingValidator`'s
+    guarantees a property of a configuration file while still requiring C# for every predicate
+- `docs/dynamic-reload.md` and `docs/configuration.md`. Reload and keyed DI shipped above with
+  their contracts recorded only in this changelog, which is not documentation — a reader of `docs/`
+  had no way to learn that a reloadable pipeline must be resolved per call, or that keyed injection
+  never observes a reload. Both rules are now written down where they are looked for
 
 ### Changed
+- `Resilion.Extensions` no longer references `Microsoft.Extensions.Logging.Abstractions`. It had
+  been declared since the package was created and used by nothing — no `ILogger` in any source
+  file — so consumers restored it for nothing and the dependency implied a logging integration
+  that did not exist. It returns when telemetry enrichment ships an `ILogger` bridge (#45)
+- The test projects no longer reference `coverlet.collector` or `xunit.runner.visualstudio`. Both
+  are VSTest-era packages and this repo runs Microsoft.Testing.Platform, under which they do
+  nothing; verified by removing them and confirming all 430 tests still discover, run and emit TRX
+- `Microsoft.Extensions.TimeProvider.Testing` moved to `tests/Directory.Build.props` at a single
+  version. It had drifted to 8.0.0 in one test project and 9.0.0 in the others, so the fake clock
+  under test was not the same one everywhere
+- README and `docs/installation.md` no longer describe `Resilion.Extensions` as providing
+  "structured logging", and the dependency graph now lists the real per-package dependencies and
+  includes `Resilion.Http`. There has never been an `ILogger` anywhere in the library
 
 - `Pipeline.Name` and `Pipeline<TResult>.Name` are public. Useful for logging on its own, and it
   removes the only `InternalsVisibleTo` a future testing package would have needed
@@ -60,6 +135,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   later calls are no-ops. Required by keyed DI, where the container disposes the keyed singleton
   *and* the registry disposes every pipeline it created, so the same instance is reached twice.
   Harmless while no strategy holds a resource, and a real double-dispose bug the day one does
+- **`README.md`'s callback example did not compile.** `OnRetry = ctx => { … }` fails with CS1660,
+  and a method group fails with CS0428: `ResilienceEventHandler<TArgs>` converts implicitly from
+  `Action<TArgs>` but is not itself a delegate type, so a lambda has no target type to bind to. The
+  example now compiles and states the constraint, and `comparison-with-polly.md` keeps the
+  performance claim (a sync handler runs inline, with no `ValueTask` allocation) while conceding
+  brevity to Polly's plain-delegate properties. Tracked for a real fix as #62
 - `docs/testing.md` asserts circuit state directly with `CircuitBreakerStateProvider` instead of
   teaching the indirect "it threw, so it must be open" idiom, with a pointer to why that idiom
   must not be lifted into production code

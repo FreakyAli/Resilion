@@ -18,15 +18,25 @@
 
   <ItemGroup>
     <PackageReference Include="xunit.v3" Version="3.2.2" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
     <PackageReference Include="Microsoft.Testing.Extensions.TrxReport" Version="1.9.1" />
-    <PackageReference Include="coverlet.collector" Version="10.0.1">
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
+    <!-- Shared by all three test projects. Kept here rather than per-project because it had
+         drifted to two different versions, which meant the fake clock under test was not the
+         same one everywhere. -->
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="9.0.0" />
   </ItemGroup>
+
+  <!--
+    Why the test projects reference Microsoft.Extensions.* 9.0.0 while src targets the 8.0.x line:
+    that is deliberate, not drift. The shipped packages declare 8.0.x, so without an explicit
+    reference the tests would resolve 8.0.0 transitively and only ever exercise the library
+    against the versions it declares. Pinning 9.0.0 in the test projects runs the same assemblies
+    against a newer DI container, HttpClientFactory and options stack, which is what a consumer on
+    a current runtime actually has.
+
+    A dependency audit will report these as redundant, because the code compiles without them.
+    Removing one silently downgrades what is under test. Verified 2026-10-23: dropping the two
+    explicit references from Resilion.Http.Tests resolved Microsoft.Extensions.Http and
+    .DependencyInjection back to 8.0.0.
+  -->
 
 </Project>
