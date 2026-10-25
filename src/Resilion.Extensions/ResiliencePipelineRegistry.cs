@@ -14,6 +14,7 @@ public sealed class ResiliencePipelineRegistry<TKey> : IPipelineProvider<TKey>, 
     private readonly ConcurrentDictionary<(TKey, Type), Lazy<object>> _typedPipelines = new();
     private readonly ConcurrentDictionary<TKey, Func<PipelineBuilder, PipelineBuilder>> _factories = new();
     private readonly ConcurrentDictionary<(TKey, Type), object> _typedFactories = new();
+    private readonly ConcurrentBag<IDisposable> _reloadSubscriptions = [];
 
     /// <summary>
     /// Registers a factory for a named pipeline. The factory is invoked lazily on first access.
@@ -56,7 +57,9 @@ public sealed class ResiliencePipelineRegistry<TKey> : IPipelineProvider<TKey>, 
     /// <exception cref="KeyNotFoundException">No pipeline is registered with the specified key.</exception>
     public Pipeline GetPipeline(TKey key)
     {
-        // Validate factory exists before creating Lazy to prevent caching faulted entries
+        // Look the factory up before creating the Lazy, so an unknown key throws without leaving a
+        // cache entry behind. Note this does NOT cover a factory that throws: that exception is
+        // cached by the Lazy and rethrown until the key is invalidated. See future-plans #67.
         if (!_factories.TryGetValue(key, out var factory))
         {
             throw new KeyNotFoundException($"No pipeline registered with key '{key}'.");
@@ -82,7 +85,9 @@ public sealed class ResiliencePipelineRegistry<TKey> : IPipelineProvider<TKey>, 
     {
         var compositeKey = (key, typeof(TResult));
 
-        // Validate factory exists before creating Lazy to prevent caching faulted entries
+        // Look the factory up before creating the Lazy, so an unknown key throws without leaving a
+        // cache entry behind. Note this does NOT cover a factory that throws: that exception is
+        // cached by the Lazy and rethrown until the key is invalidated. See future-plans #67.
         if (!_typedFactories.TryGetValue(compositeKey, out var factory))
         {
             throw new KeyNotFoundException(
@@ -118,9 +123,127 @@ public sealed class ResiliencePipelineRegistry<TKey> : IPipelineProvider<TKey>, 
         return false;
     }
 
+    /// <summary>
+    /// Attempts to get the typed pipeline registered under the specified key and result type.
+    /// </summary>
+    /// <typeparam name="TResult">The pipeline's result type.</typeparam>
+    /// <param name="key">The pipeline name.</param>
+    /// <param name="pipeline">The pipeline, if found.</param>
+    /// <returns><c>true</c> if the pipeline exists; <c>false</c> otherwise.</returns>
+    /// <remarks>
+    /// The typed counterpart of <see cref="TryGetPipeline(TKey, out Resilion.Pipeline?)"/>. Not on
+    /// <see cref="IPipelineProvider{TKey}"/>: adding a member to a public interface would break
+    /// external implementers, so the interface gains it in a future major version.
+    /// </remarks>
+    public bool TryGetPipeline<TResult>(TKey key, out Pipeline<TResult>? pipeline)
+    {
+        if (_typedFactories.ContainsKey((key, typeof(TResult))))
+        {
+            pipeline = GetPipeline<TResult>(key);
+            return true;
+        }
+
+        pipeline = null;
+        return false;
+    }
+
+    /// <summary>
+    /// Gets or sets a callback invoked when an invalidation evicts a pipeline that had already
+    /// been built.
+    /// </summary>
+    /// <remarks>
+    /// The registry never disposes an evicted pipeline — see
+    /// <see cref="PipelineReplacedArgs{TKey}"/> for why, and what your options are.
+    /// </remarks>
+    public Action<PipelineReplacedArgs<TKey>>? OnPipelineReplaced { get; set; }
+
+    /// <summary>
+    /// Drops the cached pipeline for <paramref name="key"/>, so the next
+    /// <see cref="GetPipeline(TKey)"/> rebuilds it from its registered factory.
+    /// </summary>
+    /// <param name="key">The pipeline name.</param>
+    /// <returns>
+    /// <c>true</c> if a cached entry was removed; <c>false</c> if nothing was cached — either the
+    /// key is unregistered, or its pipeline had not been built yet, in which case the next access
+    /// already builds a current one.
+    /// </returns>
+    /// <remarks>
+    /// The registered factory is untouched, which is what makes reload work: builders are
+    /// single-use, and the factory constructs a fresh one on every build.
+    /// <para>
+    /// In-flight executions complete on the old pipeline. It is immutable and the executing frame
+    /// holds it on its own stack, so nothing tears.
+    /// </para>
+    /// <para>
+    /// Eventually consistent: a concurrent invalidate and get can return a pipeline built from
+    /// options that were current microseconds ago. Locking to prevent that would serialize every
+    /// resolve for no practical gain.
+    /// </para>
+    /// </remarks>
+    public bool InvalidatePipeline(TKey key)
+    {
+        if (!_pipelines.TryRemove(key, out var lazy))
+        {
+            return false;
+        }
+
+        if (lazy.IsValueCreated)
+        {
+            OnPipelineReplaced?.Invoke(new PipelineReplacedArgs<TKey>(key, null, lazy.Value));
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Drops the cached typed pipeline for <paramref name="key"/> and
+    /// <typeparamref name="TResult"/>, so the next <see cref="GetPipeline{TResult}(TKey)"/>
+    /// rebuilds it.
+    /// </summary>
+    /// <typeparam name="TResult">The pipeline's result type.</typeparam>
+    /// <param name="key">The pipeline name.</param>
+    /// <returns><c>true</c> if a cached entry was removed; <c>false</c> otherwise.</returns>
+    /// <remarks>
+    /// Typed pipelines are keyed by name <em>and</em> result type, so this affects only the entry
+    /// for <typeparamref name="TResult"/>. Same semantics as
+    /// <see cref="InvalidatePipeline(TKey)"/> otherwise.
+    /// </remarks>
+    public bool InvalidatePipeline<TResult>(TKey key)
+    {
+        var compositeKey = (key, typeof(TResult));
+        if (!_typedPipelines.TryRemove(compositeKey, out var lazy))
+        {
+            return false;
+        }
+
+        if (lazy.IsValueCreated && lazy.Value is IAsyncDisposable disposable)
+        {
+            OnPipelineReplaced?.Invoke(
+                new PipelineReplacedArgs<TKey>(key, typeof(TResult), disposable));
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Takes ownership of a change-notification subscription, disposing it with the registry.
+    /// </summary>
+    internal void AddReloadSubscription(IDisposable subscription)
+    {
+        ArgumentNullException.ThrowIfNull(subscription);
+        _reloadSubscriptions.Add(subscription);
+    }
+
     /// <inheritdoc />
     public void Dispose()
     {
+        // Stop listening before disposing pipelines, so a change arriving mid-teardown cannot
+        // rebuild a pipeline into a registry that is going away.
+        while (_reloadSubscriptions.TryTake(out var subscription))
+        {
+            subscription.Dispose();
+        }
+
         foreach (var lazy in _pipelines.Values)
         {
             if (lazy.IsValueCreated)

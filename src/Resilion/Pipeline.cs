@@ -44,7 +44,7 @@ public sealed class Pipeline : IDisposable, IAsyncDisposable
     /// <summary>
     /// Gets the optional name of this pipeline, used in telemetry and diagnostics.
     /// </summary>
-    internal string? Name => _name;
+    public string? Name => _name;
 
     /// <summary>
     /// Creates a pipeline by configuring strategies on a builder.
@@ -285,11 +285,37 @@ public sealed class Pipeline : IDisposable, IAsyncDisposable
             cancellationToken);
     }
 
-    /// <inheritdoc />
-    public void Dispose() => _component.Dispose();
+    private int _disposed;
 
     /// <inheritdoc />
-    public ValueTask DisposeAsync() => _component.DisposeAsync();
+    /// <remarks>
+    /// Idempotent: the second and later calls are no-ops. A pipeline can legitimately be reached
+    /// by two owners — the DI container disposes a keyed singleton, and
+    /// <c>ResiliencePipelineRegistry</c> disposes every pipeline it created — so without this
+    /// guard the same instance is disposed twice. That is harmless while no strategy holds a
+    /// resource, and a real bug the day one does.
+    /// </remarks>
+    public void Dispose()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
+        _component.Dispose();
+    }
+
+    /// <inheritdoc />
+    /// <remarks>Idempotent, for the same reason as <see cref="Dispose"/>.</remarks>
+    public ValueTask DisposeAsync()
+    {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        return _component.DisposeAsync();
+    }
 }
 
 /// <summary>

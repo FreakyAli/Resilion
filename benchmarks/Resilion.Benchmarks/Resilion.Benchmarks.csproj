@@ -2,7 +2,16 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <!-- net8.0 only. The net10.0 target made Resilion.sln unbuildable by every SDK CI claims
+         to use: SDK 8.0.404 and 9.0.101 both fail with NETSDK1045, and only the newest installed
+         SDK could build the solution — which global.json's rollForward: latestMajor was silently
+         supplying, masking the breakage. Every committed report in benchmarks/results was produced
+         on net8.0 anyway. To do a cross-runtime comparison run, opt in with -p:BenchNet10=true
+         and select the framework with the -f flag. (Command omitted here: a double hyphen is
+         illegal inside an XML comment and silently breaks MSBuild's parse of this file, which
+         makes TargetFramework evaluate empty and surfaces as NETSDK1013.) -->
+    <TargetFrameworks>net8.0</TargetFrameworks>
+    <TargetFrameworks Condition="'$(BenchNet10)' == 'true'">net8.0;net10.0</TargetFrameworks>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -12,12 +21,17 @@
 
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" Version="0.14.0" />
+    <!-- Benchmark-only, never shipped. Polly.Core alone cannot express what is being compared
+         here: the DelegatingHandler + IHttpClientFactory shape. Hand-wrapping Polly.Core in our
+         own handler would measure Resilion against our Polly handler, not the one users adopt. -->
+    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="8.10.0" />
     <PackageReference Include="Polly.Core" Version="8.5.2" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Resilion\Resilion.csproj" />
     <ProjectReference Include="..\..\src\Resilion.RateLimiting\Resilion.RateLimiting.csproj" />
+    <ProjectReference Include="..\..\src\Resilion.Http\Resilion.Http.csproj" />
   </ItemGroup>
 
 </Project>

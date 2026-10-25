@@ -38,7 +38,8 @@ internal sealed class CircuitBreakerStateMachine
         ResilienceEventHandler<CircuitStateChangedEvent>? onOpened,
         ResilienceEventHandler<CircuitStateChangedEvent>? onClosed,
         ResilienceEventHandler<CircuitStateChangedEvent>? onHalfOpened,
-        CircuitBreakerManualControl? manualControl)
+        CircuitBreakerManualControl? manualControl,
+        CircuitBreakerStateProvider? stateProvider)
     {
         _failureRatioThreshold = failureRatioThreshold;
         _minimumThroughput = minimumThroughput;
@@ -54,6 +55,8 @@ internal sealed class CircuitBreakerStateMachine
         manualControl?.Initialize(
             onIsolate: () => { Isolate(); return Task.CompletedTask; },
             onReset: () => { Reset(); return Task.CompletedTask; });
+
+        stateProvider?.Initialize(() => _state);
     }
 
     internal CircuitState State => _state;

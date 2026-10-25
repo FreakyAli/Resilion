@@ -20,13 +20,7 @@ internal sealed class RetryStrategy : Strategy
         Func<ResilienceContext, ValueTask<Outcome<TResult>>> callback,
         ResilienceContext context)
     {
-        using var activity = ResilionTelemetry.ActivitySource.StartActivity("Retry");
-        if (activity is not null)
-        {
-            activity.SetTag("strategy.name", "Retry");
-            activity.SetTag("pipeline.name", context.PipelineName);
-            activity.SetTag("operation.key", context.OperationKey);
-        }
+        using var activity = StrategyActivity.Start("Retry", context);
 
         if (_options.MaxRetryAttempts == 0)
         {
@@ -45,20 +39,14 @@ internal sealed class RetryStrategy : Strategy
             // Success — return immediately.
             if (outcome.IsSuccess)
             {
-                if (activity is not null)
-                {
-                    activity.SetTag("outcome", "success");
-                }
+                StrategyActivity.SetOutcome(activity, "success");
                 return outcome;
             }
 
             // Check if this exception should trigger a retry.
             if (!_options.ShouldHandleException(outcome.Exception!))
             {
-                if (activity is not null)
-                {
-                    activity.SetTag("outcome", "failure");
-                }
+                StrategyActivity.SetOutcome(activity, "failure");
                 return outcome;
             }
 
@@ -94,10 +82,7 @@ internal sealed class RetryStrategy : Strategy
             }
         }
 
-        if (activity is not null)
-        {
-            activity.SetTag("outcome", "retry_exhausted");
-        }
+        StrategyActivity.SetOutcome(activity, "retry_exhausted");
 
         return outcome;
     }
@@ -106,13 +91,7 @@ internal sealed class RetryStrategy : Strategy
         Func<ResilienceContext, Outcome<TResult>> callback,
         ResilienceContext context)
     {
-        using var activity = ResilionTelemetry.ActivitySource.StartActivity("Retry");
-        if (activity is not null)
-        {
-            activity.SetTag("strategy.name", "Retry");
-            activity.SetTag("pipeline.name", context.PipelineName);
-            activity.SetTag("operation.key", context.OperationKey);
-        }
+        using var activity = StrategyActivity.Start("Retry", context);
 
         if (_options.MaxRetryAttempts == 0)
         {
@@ -129,19 +108,13 @@ internal sealed class RetryStrategy : Strategy
 
             if (outcome.IsSuccess)
             {
-                if (activity is not null)
-                {
-                    activity.SetTag("outcome", "success");
-                }
+                StrategyActivity.SetOutcome(activity, "success");
                 return outcome;
             }
 
             if (!_options.ShouldHandleException(outcome.Exception!))
             {
-                if (activity is not null)
-                {
-                    activity.SetTag("outcome", "failure");
-                }
+                StrategyActivity.SetOutcome(activity, "failure");
                 return outcome;
             }
 
@@ -172,10 +145,7 @@ internal sealed class RetryStrategy : Strategy
             }
         }
 
-        if (activity is not null)
-        {
-            activity.SetTag("outcome", "retry_exhausted");
-        }
+        StrategyActivity.SetOutcome(activity, "retry_exhausted");
 
         return outcome;
     }
@@ -199,6 +169,8 @@ internal sealed class RetryStrategy<TResult> : Strategy<TResult>
         Func<ResilienceContext, ValueTask<Outcome<TResult>>> callback,
         ResilienceContext context)
     {
+        using var activity = StrategyActivity.Start("Retry", context);
+
         if (_options.MaxRetryAttempts == 0)
         {
             return await callback(context).ConfigureAwait(context.ContinueOnCapturedContext);
@@ -215,6 +187,7 @@ internal sealed class RetryStrategy<TResult> : Strategy<TResult>
             // Check predicate against the full outcome (exception OR result).
             if (!_options.ShouldHandleOutcome(outcome))
             {
+                StrategyActivity.SetOutcome(activity, outcome.IsSuccess ? "success" : "failure");
                 return outcome;
             }
 
@@ -246,6 +219,7 @@ internal sealed class RetryStrategy<TResult> : Strategy<TResult>
             }
         }
 
+        StrategyActivity.SetOutcome(activity, "retry_exhausted");
         return outcome;
     }
 
@@ -253,6 +227,8 @@ internal sealed class RetryStrategy<TResult> : Strategy<TResult>
         Func<ResilienceContext, Outcome<TResult>> callback,
         ResilienceContext context)
     {
+        using var activity = StrategyActivity.Start("Retry", context);
+
         if (_options.MaxRetryAttempts == 0)
         {
             return callback(context);
@@ -268,6 +244,7 @@ internal sealed class RetryStrategy<TResult> : Strategy<TResult>
 
             if (!_options.ShouldHandleOutcome(outcome))
             {
+                StrategyActivity.SetOutcome(activity, outcome.IsSuccess ? "success" : "failure");
                 return outcome;
             }
 
@@ -297,6 +274,7 @@ internal sealed class RetryStrategy<TResult> : Strategy<TResult>
             }
         }
 
+        StrategyActivity.SetOutcome(activity, "retry_exhausted");
         return outcome;
     }
 }

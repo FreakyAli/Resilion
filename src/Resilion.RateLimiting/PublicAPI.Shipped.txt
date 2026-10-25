@@ -1,4 +1,18 @@
-# This file tracks the public API surface of Resilion.RateLimiting v1.0.
-# It will be generated after v1.0 is shipped using PublicApiAnalyzers.
-# Until then, it serves as a placeholder to enable the analyzer.
-# See: https://github.com/dotnet/roslyn-analyzers/blob/main/src/PublicApiAnalyzers/PublicApiAnalyzers.Help.md
+#nullable enable
+Resilion.RateLimiting.OnRateLimitRejectedEvent
+Resilion.RateLimiting.OnRateLimitRejectedEvent.Context.get -> Resilion.ResilienceContext!
+Resilion.RateLimiting.OnRateLimitRejectedEvent.Context.init -> void
+Resilion.RateLimiting.OnRateLimitRejectedEvent.OnRateLimitRejectedEvent() -> void
+Resilion.RateLimiting.OnRateLimitRejectedEvent.OnRateLimitRejectedEvent(System.TimeSpan? RetryAfter, Resilion.ResilienceContext! Context) -> void
+Resilion.RateLimiting.OnRateLimitRejectedEvent.RetryAfter.get -> System.TimeSpan?
+Resilion.RateLimiting.OnRateLimitRejectedEvent.RetryAfter.init -> void
+Resilion.RateLimiting.RateLimitRejectedException
+Resilion.RateLimiting.RateLimitRejectedException.RetryAfter.get -> System.TimeSpan?
+Resilion.RateLimiting.RateLimiterExtensions
+Resilion.RateLimiting.RateLimiterStrategyOptions
+Resilion.RateLimiting.RateLimiterStrategyOptions.OnRejected.get -> Resilion.ResilienceEventHandler<Resilion.RateLimiting.OnRateLimitRejectedEvent>?
+Resilion.RateLimiting.RateLimiterStrategyOptions.OnRejected.init -> void
+Resilion.RateLimiting.RateLimiterStrategyOptions.RateLimiter.get -> System.Threading.RateLimiting.RateLimiter?
+Resilion.RateLimiting.RateLimiterStrategyOptions.RateLimiter.init -> void
+static Resilion.RateLimiting.RateLimiterExtensions.AddRateLimiter(this Resilion.PipelineBuilder! builder, Resilion.RateLimiting.RateLimiterStrategyOptions! options) -> Resilion.PipelineBuilder!
+static Resilion.RateLimiting.RateLimiterExtensions.AddRateLimiter<TResult>(this Resilion.PipelineBuilder<TResult>! builder, Resilion.RateLimiting.RateLimiterStrategyOptions! options) -> Resilion.PipelineBuilder<TResult>!

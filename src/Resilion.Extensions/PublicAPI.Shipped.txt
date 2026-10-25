@@ -1,4 +1,18 @@
-# This file tracks the public API surface of Resilion.Extensions v1.0.
-# It will be generated after v1.0 is shipped using PublicApiAnalyzers.
-# Until then, it serves as a placeholder to enable the analyzer.
-# See: https://github.com/dotnet/roslyn-analyzers/blob/main/src/PublicApiAnalyzers/PublicApiAnalyzers.Help.md
+#nullable enable
+Resilion.Extensions.IPipelineProvider<TKey>
+Resilion.Extensions.IPipelineProvider<TKey>.GetPipeline(TKey key) -> Resilion.Pipeline!
+Resilion.Extensions.IPipelineProvider<TKey>.GetPipeline<TResult>(TKey key) -> Resilion.Pipeline<TResult>!
+Resilion.Extensions.IPipelineProvider<TKey>.TryGetPipeline(TKey key, out Resilion.Pipeline? pipeline) -> bool
+Resilion.Extensions.ResiliencePipelineRegistry<TKey>
+Resilion.Extensions.ResiliencePipelineRegistry<TKey>.Dispose() -> void
+Resilion.Extensions.ResiliencePipelineRegistry<TKey>.GetPipeline(TKey key) -> Resilion.Pipeline!
+Resilion.Extensions.ResiliencePipelineRegistry<TKey>.GetPipeline<TResult>(TKey key) -> Resilion.Pipeline<TResult>!
+Resilion.Extensions.ResiliencePipelineRegistry<TKey>.RegisterPipeline(TKey key, System.Action<Resilion.PipelineBuilder!>! configure) -> void
+Resilion.Extensions.ResiliencePipelineRegistry<TKey>.RegisterPipeline<TResult>(TKey key, System.Action<Resilion.PipelineBuilder<TResult>!>! configure) -> void
+Resilion.Extensions.ResiliencePipelineRegistry<TKey>.ResiliencePipelineRegistry() -> void
+Resilion.Extensions.ResiliencePipelineRegistry<TKey>.TryGetPipeline(TKey key, out Resilion.Pipeline? pipeline) -> bool
+Resilion.Extensions.ResilionServiceCollectionExtensions
+static Resilion.Extensions.ResilionServiceCollectionExtensions.AddResiliencePipeline(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, string! name, System.Action<Resilion.PipelineBuilder!>! configure) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Resilion.Extensions.ResilionServiceCollectionExtensions.AddResiliencePipeline<TResult>(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, string! name, System.Action<Resilion.PipelineBuilder<TResult>!>! configure) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Resilion.Extensions.ResilionServiceCollectionExtensions.AddResilienceServices(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Resilion.Extensions.ResilionServiceCollectionExtensions.AddResilion(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!

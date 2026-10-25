@@ -1,25 +1,67 @@
 #nullable enable
-
-# New public APIs for Resilion.Extensions (yet to ship).
-# Entries here should be moved to PublicAPI.Shipped.txt upon release.
-
-namespace Resilion.Extensions;
-
-IPipelineProvider<TKey>
-IPipelineProvider<TKey>.GetPipeline(TKey) -> Resilion.Pipeline!
-IPipelineProvider<TKey>.GetPipeline<TResult>(TKey) -> Resilion.Pipeline<TResult>!
-IPipelineProvider<TKey>.TryGetPipeline(TKey, out Resilion.Pipeline?) -> bool
-
-ResilionServiceCollectionExtensions
-ResilionServiceCollectionExtensions.AddResilienceServices(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
-ResilionServiceCollectionExtensions.AddResilion(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
-ResilionServiceCollectionExtensions.AddResiliencePipeline(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, string! name, System.Action<Resilion.PipelineBuilder>! configure) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
-ResilionServiceCollectionExtensions.AddResiliencePipeline<TResult>(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, string! name, System.Action<Resilion.PipelineBuilder<TResult>>! configure) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
-
-ResiliencePipelineRegistry<TKey>
-ResiliencePipelineRegistry<TKey>.RegisterPipeline(TKey!, System.Action<Resilion.PipelineBuilder>!) -> void
-ResiliencePipelineRegistry<TKey>.RegisterPipeline<TResult>(TKey!, System.Action<Resilion.PipelineBuilder<TResult>>!) -> void
-ResiliencePipelineRegistry<TKey>.GetPipeline(TKey!) -> Resilion.Pipeline!
-ResiliencePipelineRegistry<TKey>.GetPipeline<TResult>(TKey!) -> Resilion.Pipeline<TResult>!
-ResiliencePipelineRegistry<TKey>.TryGetPipeline(TKey!, out Resilion.Pipeline?) -> bool
-ResiliencePipelineRegistry<TKey>.Dispose() -> void
+Resilion.Extensions.Configuration.CircuitBreakerStrategyConfiguration
+Resilion.Extensions.Configuration.CircuitBreakerStrategyConfiguration.BreakDuration.get -> System.TimeSpan
+Resilion.Extensions.Configuration.CircuitBreakerStrategyConfiguration.BreakDuration.set -> void
+Resilion.Extensions.Configuration.CircuitBreakerStrategyConfiguration.CircuitBreakerStrategyConfiguration() -> void
+Resilion.Extensions.Configuration.CircuitBreakerStrategyConfiguration.FailureRatioThreshold.get -> double
+Resilion.Extensions.Configuration.CircuitBreakerStrategyConfiguration.FailureRatioThreshold.set -> void
+Resilion.Extensions.Configuration.CircuitBreakerStrategyConfiguration.MinimumThroughput.get -> int
+Resilion.Extensions.Configuration.CircuitBreakerStrategyConfiguration.MinimumThroughput.set -> void
+Resilion.Extensions.Configuration.CircuitBreakerStrategyConfiguration.SamplingDuration.get -> System.TimeSpan
+Resilion.Extensions.Configuration.CircuitBreakerStrategyConfiguration.SamplingDuration.set -> void
+Resilion.Extensions.Configuration.CircuitBreakerStrategyConfiguration.ToOptions() -> Resilion.CircuitBreakerStrategyOptions!
+Resilion.Extensions.Configuration.CircuitBreakerStrategyConfiguration.ToOptions<TResult>() -> Resilion.CircuitBreakerStrategyOptions<TResult>!
+Resilion.Extensions.Configuration.HedgingStrategyConfiguration
+Resilion.Extensions.Configuration.HedgingStrategyConfiguration.HedgingDelay.get -> System.TimeSpan
+Resilion.Extensions.Configuration.HedgingStrategyConfiguration.HedgingDelay.set -> void
+Resilion.Extensions.Configuration.HedgingStrategyConfiguration.HedgingStrategyConfiguration() -> void
+Resilion.Extensions.Configuration.HedgingStrategyConfiguration.MaxHedgedAttempts.get -> int
+Resilion.Extensions.Configuration.HedgingStrategyConfiguration.MaxHedgedAttempts.set -> void
+Resilion.Extensions.Configuration.HedgingStrategyConfiguration.ToOptions<TResult>() -> Resilion.HedgingStrategyOptions<TResult>!
+Resilion.Extensions.Configuration.RetryDelayConfiguration
+Resilion.Extensions.Configuration.RetryDelayConfiguration.BaseDelay.get -> System.TimeSpan
+Resilion.Extensions.Configuration.RetryDelayConfiguration.BaseDelay.set -> void
+Resilion.Extensions.Configuration.RetryDelayConfiguration.Kind.get -> Resilion.Extensions.Configuration.RetryDelayKind
+Resilion.Extensions.Configuration.RetryDelayConfiguration.Kind.set -> void
+Resilion.Extensions.Configuration.RetryDelayConfiguration.RetryDelayConfiguration() -> void
+Resilion.Extensions.Configuration.RetryDelayConfiguration.ToRetryDelay() -> Resilion.RetryDelay!
+Resilion.Extensions.Configuration.RetryDelayKind
+Resilion.Extensions.Configuration.RetryDelayKind.Constant = 0 -> Resilion.Extensions.Configuration.RetryDelayKind
+Resilion.Extensions.Configuration.RetryDelayKind.Exponential = 2 -> Resilion.Extensions.Configuration.RetryDelayKind
+Resilion.Extensions.Configuration.RetryDelayKind.Linear = 1 -> Resilion.Extensions.Configuration.RetryDelayKind
+Resilion.Extensions.Configuration.RetryStrategyConfiguration
+Resilion.Extensions.Configuration.RetryStrategyConfiguration.Delay.get -> Resilion.Extensions.Configuration.RetryDelayConfiguration!
+Resilion.Extensions.Configuration.RetryStrategyConfiguration.Delay.set -> void
+Resilion.Extensions.Configuration.RetryStrategyConfiguration.MaxDelay.get -> System.TimeSpan?
+Resilion.Extensions.Configuration.RetryStrategyConfiguration.MaxDelay.set -> void
+Resilion.Extensions.Configuration.RetryStrategyConfiguration.MaxRetryAttempts.get -> int
+Resilion.Extensions.Configuration.RetryStrategyConfiguration.MaxRetryAttempts.set -> void
+Resilion.Extensions.Configuration.RetryStrategyConfiguration.RetryStrategyConfiguration() -> void
+Resilion.Extensions.Configuration.RetryStrategyConfiguration.ToOptions() -> Resilion.RetryStrategyOptions!
+Resilion.Extensions.Configuration.RetryStrategyConfiguration.ToOptions<TResult>() -> Resilion.RetryStrategyOptions<TResult>!
+Resilion.Extensions.Configuration.RetryStrategyConfiguration.UseJitter.get -> bool
+Resilion.Extensions.Configuration.RetryStrategyConfiguration.UseJitter.set -> void
+Resilion.Extensions.Configuration.TimeoutStrategyConfiguration
+Resilion.Extensions.Configuration.TimeoutStrategyConfiguration.Timeout.get -> System.TimeSpan
+Resilion.Extensions.Configuration.TimeoutStrategyConfiguration.Timeout.set -> void
+Resilion.Extensions.Configuration.TimeoutStrategyConfiguration.TimeoutStrategyConfiguration() -> void
+Resilion.Extensions.Configuration.TimeoutStrategyConfiguration.ToOptions() -> Resilion.TimeoutStrategyOptions!
+Resilion.Extensions.PipelineReplacedArgs<TKey>
+Resilion.Extensions.PipelineReplacedArgs<TKey>.Key.get -> TKey
+Resilion.Extensions.PipelineReplacedArgs<TKey>.Key.init -> void
+Resilion.Extensions.PipelineReplacedArgs<TKey>.PipelineReplacedArgs() -> void
+Resilion.Extensions.PipelineReplacedArgs<TKey>.PipelineReplacedArgs(TKey Key, System.Type? ResultType, System.IAsyncDisposable! ReplacedPipeline) -> void
+Resilion.Extensions.PipelineReplacedArgs<TKey>.ReplacedPipeline.get -> System.IAsyncDisposable!
+Resilion.Extensions.PipelineReplacedArgs<TKey>.ReplacedPipeline.init -> void
+Resilion.Extensions.PipelineReplacedArgs<TKey>.ResultType.get -> System.Type?
+Resilion.Extensions.PipelineReplacedArgs<TKey>.ResultType.init -> void
+Resilion.Extensions.ResiliencePipelineRegistry<TKey>.InvalidatePipeline(TKey key) -> bool
+Resilion.Extensions.ResiliencePipelineRegistry<TKey>.InvalidatePipeline<TResult>(TKey key) -> bool
+Resilion.Extensions.ResiliencePipelineRegistry<TKey>.OnPipelineReplaced.get -> System.Action<Resilion.Extensions.PipelineReplacedArgs<TKey>>?
+Resilion.Extensions.ResiliencePipelineRegistry<TKey>.OnPipelineReplaced.set -> void
+Resilion.Extensions.ResiliencePipelineRegistry<TKey>.TryGetPipeline<TResult>(TKey key, out Resilion.Pipeline<TResult>? pipeline) -> bool
+static Resilion.Extensions.ResilionServiceCollectionExtensions.AddResiliencePipeline<TOptions>(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, string! name, string? optionsName, System.Action<Resilion.PipelineBuilder!, TOptions!>! configure) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Resilion.Extensions.ResilionServiceCollectionExtensions.AddResiliencePipeline<TOptions>(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, string! name, System.Action<Resilion.PipelineBuilder!, TOptions!>! configure) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Resilion.Extensions.ResilionServiceCollectionExtensions.AddResiliencePipeline<TResult, TOptions>(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, string! name, string? optionsName, System.Action<Resilion.PipelineBuilder<TResult>!, TOptions!>! configure) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Resilion.Extensions.ResilionServiceCollectionExtensions.AddResiliencePipeline<TResult, TOptions>(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, string! name, System.Action<Resilion.PipelineBuilder<TResult>!, TOptions!>! configure) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+static Resilion.Extensions.ResilionServiceCollectionExtensions.ConfigureResiliencePipelineRegistry(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services, System.Action<Resilion.Extensions.ResiliencePipelineRegistry<string!>!>! configure) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!

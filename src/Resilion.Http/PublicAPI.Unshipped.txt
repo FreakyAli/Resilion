@@ -1,0 +1,51 @@
+#nullable enable
+Microsoft.Extensions.DependencyInjection.ResilionHttpClientBuilderExtensions
+Resilion.Http.HttpRequestReplay
+Resilion.Http.HttpRequestReplay.CloneRequest = 1 -> Resilion.Http.HttpRequestReplay
+Resilion.Http.HttpRequestReplay.ReuseRequest = 0 -> Resilion.Http.HttpRequestReplay
+Resilion.Http.HttpResilienceContextExtensions
+Resilion.Http.HttpResiliencePredicates
+Resilion.Http.HttpStandardHedgingOptions
+Resilion.Http.HttpStandardHedgingOptions.AttemptTimeout.get -> Resilion.TimeoutStrategyOptions!
+Resilion.Http.HttpStandardHedgingOptions.AttemptTimeout.set -> void
+Resilion.Http.HttpStandardHedgingOptions.CircuitBreaker.get -> Resilion.CircuitBreakerStrategyOptions<System.Net.Http.HttpResponseMessage!>!
+Resilion.Http.HttpStandardHedgingOptions.CircuitBreaker.set -> void
+Resilion.Http.HttpStandardHedgingOptions.Hedging.get -> Resilion.HedgingStrategyOptions<System.Net.Http.HttpResponseMessage!>!
+Resilion.Http.HttpStandardHedgingOptions.Hedging.set -> void
+Resilion.Http.HttpStandardHedgingOptions.HttpStandardHedgingOptions() -> void
+Resilion.Http.HttpStandardHedgingOptions.RateLimiter.get -> Resilion.RateLimiting.RateLimiterStrategyOptions?
+Resilion.Http.HttpStandardHedgingOptions.RateLimiter.set -> void
+Resilion.Http.HttpStandardHedgingOptions.TimeProvider.get -> System.TimeProvider!
+Resilion.Http.HttpStandardHedgingOptions.TimeProvider.set -> void
+Resilion.Http.HttpStandardHedgingOptions.TotalRequestTimeout.get -> Resilion.TimeoutStrategyOptions!
+Resilion.Http.HttpStandardHedgingOptions.TotalRequestTimeout.set -> void
+Resilion.Http.HttpStandardResilienceOptions
+Resilion.Http.HttpStandardResilienceOptions.AttemptTimeout.get -> Resilion.TimeoutStrategyOptions!
+Resilion.Http.HttpStandardResilienceOptions.AttemptTimeout.set -> void
+Resilion.Http.HttpStandardResilienceOptions.CircuitBreaker.get -> Resilion.CircuitBreakerStrategyOptions<System.Net.Http.HttpResponseMessage!>!
+Resilion.Http.HttpStandardResilienceOptions.CircuitBreaker.set -> void
+Resilion.Http.HttpStandardResilienceOptions.HttpStandardResilienceOptions() -> void
+Resilion.Http.HttpStandardResilienceOptions.RateLimiter.get -> Resilion.RateLimiting.RateLimiterStrategyOptions?
+Resilion.Http.HttpStandardResilienceOptions.RateLimiter.set -> void
+Resilion.Http.HttpStandardResilienceOptions.RequestReplay.get -> Resilion.Http.HttpRequestReplay
+Resilion.Http.HttpStandardResilienceOptions.RequestReplay.set -> void
+Resilion.Http.HttpStandardResilienceOptions.Retry.get -> Resilion.RetryStrategyOptions<System.Net.Http.HttpResponseMessage!>!
+Resilion.Http.HttpStandardResilienceOptions.Retry.set -> void
+Resilion.Http.HttpStandardResilienceOptions.TimeProvider.get -> System.TimeProvider!
+Resilion.Http.HttpStandardResilienceOptions.TimeProvider.set -> void
+Resilion.Http.HttpStandardResilienceOptions.TotalRequestTimeout.get -> Resilion.TimeoutStrategyOptions!
+Resilion.Http.HttpStandardResilienceOptions.TotalRequestTimeout.set -> void
+static Microsoft.Extensions.DependencyInjection.ResilionHttpClientBuilderExtensions.AddResilienceHandler(this Microsoft.Extensions.DependencyInjection.IHttpClientBuilder! builder, string! key, System.Action<Resilion.PipelineBuilder<System.Net.Http.HttpResponseMessage!>!, System.IServiceProvider!>! configure) -> Microsoft.Extensions.DependencyInjection.IHttpClientBuilder!
+static Microsoft.Extensions.DependencyInjection.ResilionHttpClientBuilderExtensions.AddResilienceHandler(this Microsoft.Extensions.DependencyInjection.IHttpClientBuilder! builder, string! key, System.Action<Resilion.PipelineBuilder<System.Net.Http.HttpResponseMessage!>!, System.IServiceProvider!>! configure, Resilion.Http.HttpRequestReplay requestReplay) -> Microsoft.Extensions.DependencyInjection.IHttpClientBuilder!
+static Microsoft.Extensions.DependencyInjection.ResilionHttpClientBuilderExtensions.AddResilienceHandler(this Microsoft.Extensions.DependencyInjection.IHttpClientBuilder! builder, string! key, System.Action<Resilion.PipelineBuilder<System.Net.Http.HttpResponseMessage!>!>! configure) -> Microsoft.Extensions.DependencyInjection.IHttpClientBuilder!
+static Microsoft.Extensions.DependencyInjection.ResilionHttpClientBuilderExtensions.AddResilienceHandler(this Microsoft.Extensions.DependencyInjection.IHttpClientBuilder! builder, string! key, System.Action<Resilion.PipelineBuilder<System.Net.Http.HttpResponseMessage!>!>! configure, Resilion.Http.HttpRequestReplay requestReplay) -> Microsoft.Extensions.DependencyInjection.IHttpClientBuilder!
+static Microsoft.Extensions.DependencyInjection.ResilionHttpClientBuilderExtensions.AddStandardHedgingHandler(this Microsoft.Extensions.DependencyInjection.IHttpClientBuilder! builder) -> Microsoft.Extensions.DependencyInjection.IHttpClientBuilder!
+static Microsoft.Extensions.DependencyInjection.ResilionHttpClientBuilderExtensions.AddStandardHedgingHandler(this Microsoft.Extensions.DependencyInjection.IHttpClientBuilder! builder, System.Action<Resilion.Http.HttpStandardHedgingOptions!, System.IServiceProvider!>! configure) -> Microsoft.Extensions.DependencyInjection.IHttpClientBuilder!
+static Microsoft.Extensions.DependencyInjection.ResilionHttpClientBuilderExtensions.AddStandardHedgingHandler(this Microsoft.Extensions.DependencyInjection.IHttpClientBuilder! builder, System.Action<Resilion.Http.HttpStandardHedgingOptions!>! configure) -> Microsoft.Extensions.DependencyInjection.IHttpClientBuilder!
+static Microsoft.Extensions.DependencyInjection.ResilionHttpClientBuilderExtensions.AddStandardResilienceHandler(this Microsoft.Extensions.DependencyInjection.IHttpClientBuilder! builder) -> Microsoft.Extensions.DependencyInjection.IHttpClientBuilder!
+static Microsoft.Extensions.DependencyInjection.ResilionHttpClientBuilderExtensions.AddStandardResilienceHandler(this Microsoft.Extensions.DependencyInjection.IHttpClientBuilder! builder, System.Action<Resilion.Http.HttpStandardResilienceOptions!, System.IServiceProvider!>! configure) -> Microsoft.Extensions.DependencyInjection.IHttpClientBuilder!
+static Microsoft.Extensions.DependencyInjection.ResilionHttpClientBuilderExtensions.AddStandardResilienceHandler(this Microsoft.Extensions.DependencyInjection.IHttpClientBuilder! builder, System.Action<Resilion.Http.HttpStandardResilienceOptions!>! configure) -> Microsoft.Extensions.DependencyInjection.IHttpClientBuilder!
+static Resilion.Http.HttpResilienceContextExtensions.GetRequestMessage(this Resilion.ResilienceContext! context) -> System.Net.Http.HttpRequestMessage?
+static Resilion.Http.HttpResiliencePredicates.IsTransient(Resilion.Outcome<System.Net.Http.HttpResponseMessage!> outcome) -> bool
+static Resilion.Http.HttpResiliencePredicates.IsTransientException(System.Exception! exception) -> bool
+static Resilion.Http.HttpResiliencePredicates.IsTransientStatusCode(System.Net.HttpStatusCode statusCode) -> bool

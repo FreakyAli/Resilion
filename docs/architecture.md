@@ -119,7 +119,7 @@ See [benchmarks/results](../benchmarks/results/README.md) for measured numbers a
 
 ### Per-call pipeline overhead
 
-Each `StrategyComponent` in the chain creates a closure `ctx => _next.ExecuteAsync(callback, ctx)`. In a pipeline with N strategies this means N small closure allocations per call. This is inherent to the middleware pattern — documented in [future-plans.md](future-plans.md#per-call-delegate-allocation-in-pipeline-chain).
+Each `StrategyComponent` in the chain creates a closure `ctx => _next.ExecuteAsync(callback, ctx)`. In a pipeline with N strategies this means N small closure allocations per call. This is inherent to the middleware pattern — documented in [future-plans.md](future-plans.md#4-per-call-delegate-allocation-in-pipeline-chain) as item #4.
 
 ### Zero-cost telemetry
 

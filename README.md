@@ -57,7 +57,24 @@ var pipeline = Pipeline.Create(b => b
 ```
 
 ### Sync and Async
-Both `Execute` and `ExecuteAsync` with **true sync implementations** — not sync-over-async. No blocking calls, no artificial overhead.
+Every built-in strategy has a **real synchronous implementation** on its own execution path —
+`Thread.Sleep` and `WaitHandle`, not `.GetAwaiter().GetResult()` over the async path. This matters
+on WinForms/WPF UI threads, ASP.NET Framework, and anywhere blocking on an async call risks
+deadlock.
+
+Four limits, so you can tell whether this covers your case:
+
+- An **async** fallback factory (`FallbackActionAsync`) or an **async** event handler
+  (`OnRetry`, `OnTimeout`, …) is still async work being run from a sync call. When a
+  `SynchronizationContext` is present, Resilion hops to the thread pool to run it — that hop is
+  what avoids the deadlock, but it is sync-over-async. Supply *synchronous* handlers
+  (`Action<TArgs>`, which is the default shape) and this never happens.
+- **Sync hedging is sequential-only.** Parallel and latency modes need real concurrency, so
+  `Execute` throws for them rather than silently degrading.
+- **Sync retry delays are not driven by `TimeProvider`**, so they can't be advanced by
+  `FakeTimeProvider` in tests ([future-plans #9](docs/future-plans.md)).
+- A **custom** strategy must override `Execute`; the base implementation throws under a
+  `SynchronizationContext` rather than risking a deadlock on your behalf.
 
 ```csharp
 // Synchronous execution
@@ -86,14 +103,28 @@ var pipeline = Pipeline.Create<HttpResponseMessage>(b => b.AddRetry(
 Assign callbacks directly. No `ValueTask` wrapping for synchronous logging:
 
 ```csharp
+Action<RetryAttemptEvent> onRetry = context =>
+    logger.LogWarning("Retry attempt {Attempt}", context.AttemptNumber);
+
+new RetryStrategyOptions { OnRetry = onRetry };
+```
+
+The handler's type has to be stated. `ResilienceEventHandler<TArgs>` converts implicitly from
+`Action<TArgs>` and `Func<TArgs, ValueTask>`, but it is not itself a delegate type, so C# will not
+convert a bare lambda (`CS1660`) or a method group (`CS0428`) to it. A local, an inline cast, or
+`new Action<TArgs>(...)` all work:
+
+```csharp
 new RetryStrategyOptions
 {
-    OnRetry = (context) => 
-    {
-        logger.LogWarning($"Retry attempt {context.AttemptNumber}");
-    }
-}
+    OnRetry = new Action<RetryAttemptEvent>(context =>
+        logger.LogWarning("Retry attempt {Attempt}", context.AttemptNumber)),
+};
 ```
+
+An async handler is the same shape with `Func<TArgs, ValueTask>`. The saving over always-async
+callbacks is real — a synchronous handler runs inline, with no `ValueTask` wrapping — but it costs
+you the one-liner.
 
 ### Composable Pipelines
 Combine pre-built pipelines into larger ones:
@@ -131,13 +162,19 @@ dotnet add package Resilion.Extensions
 dotnet add package Resilion.RateLimiting
 ```
 
+### HttpClient Integration
+```bash
+dotnet add package Resilion.Http
+```
+
 ## Packages & Dependencies
 
 | Package | Purpose | Dependencies |
 |---------|---------|-------------|
-| **Resilion** | Core library with all built-in strategies | None |
-| **Resilion.Extensions** | DI registration, telemetry (Meter/ActivitySource), structured logging | Microsoft.Extensions.* |
+| **Resilion** | Core library with all built-in strategies, metrics and spans | None |
+| **Resilion.Extensions** | DI registration, pipeline registry, reload, `IConfiguration` binding | Microsoft.Extensions.DependencyInjection.Abstractions, Microsoft.Extensions.Options |
 | **Resilion.RateLimiting** | Rate limiting strategy with multiple algorithms | System.Threading.RateLimiting |
+| **Resilion.Http** | `HttpClient` / `IHttpClientFactory` resilience handlers | Microsoft.Extensions.Http, Resilion.Extensions, Resilion.RateLimiting |
 
 ## Strategies
 
@@ -348,6 +385,37 @@ var result = await pipeline.ExecuteAsync(
     httpClient);
 ```
 
+Keyed resolution works too, with no Resilion-specific API:
+
+```csharp
+public sealed class ApiClient([FromKeyedServices("http-api")] Pipeline pipeline) { }
+```
+
+Pipelines can also be bound to `IOptionsMonitor<T>` and rebuilt when their configuration changes.
+Two rules come with that, both load-bearing: **resolve a reloadable pipeline per call** rather than
+caching it in a field, and **keyed injection never observes a reload**, because a keyed singleton
+resolves once for the container's lifetime. See
+[docs/dynamic-reload.md](docs/dynamic-reload.md), and
+[docs/configuration.md](docs/configuration.md) for binding strategy options straight from
+`appsettings.json`.
+
+## HttpClient Integration
+
+Wrapping `HttpClient` is the most common use for a resilience library, so it is one line:
+
+```csharp
+services.AddHttpClient("api").AddStandardResilienceHandler();
+```
+
+That adds rate limiting (off by default), a total timeout, retry, a circuit breaker and a
+per-attempt timeout, retrying 5xx, 408, 429, `HttpRequestException` and `TimeoutRejectedException`.
+`AddStandardHedgingHandler()` swaps retry for hedging, and `AddResilienceHandler(key, …)` takes a
+pipeline you build yourself.
+
+Discarded responses are disposed for you, so a retry-heavy client does not exhaust its connection
+pool. See [docs/http.md](docs/http.md) for request replay, hedging, what to catch, and the known
+limitations.
+
 ## Telemetry
 
 Resilion emits metrics on a `"Resilion"` `Meter` — retry attempts, circuit breaker state
@@ -356,7 +424,8 @@ rejections — with zero overhead until something subscribes. See
 [docs/telemetry.md](docs/telemetry.md) for the full instrument list and how to subscribe with
 `MeterListener`, `dotnet-counters`, or OpenTelemetry.
 
-Structured logging is also available through callbacks on strategy options.
+There is no `ILogger` integration: Resilion emits metrics and spans, and anything you want
+logged goes through a callback on the strategy options, so the logger stays yours.
 
 ## Supported .NET Versions
 
@@ -373,11 +442,13 @@ Resilion is built for modern .NET with full support for:
 ```text
 src/
   Resilion/                   Core library (zero dependencies)
-  Resilion.Extensions/        DI, telemetry, structured logging
+  Resilion.Extensions/        DI, pipeline registry, reload, configuration binding
   Resilion.RateLimiting/      Rate limiting strategy
+  Resilion.Http/              HttpClient integration (DelegatingHandler)
 tests/
   Resilion.Tests/             Core strategy and pipeline tests
   Resilion.Extensions.Tests/  DI and telemetry tests
+  Resilion.Http.Tests/        HttpClient handler tests
 benchmarks/
   Resilion.Benchmarks/        Performance benchmarks (BenchmarkDotNet)
 samples/
@@ -401,10 +472,16 @@ Measured on an Apple M4 Pro against Polly.Core 8.5.2, same pipeline shapes both 
 
 | Scenario | Resilion | Polly.Core | Notes |
 |----------|---------:|-----------:|-------|
-| Empty pipeline | 69 ns / 96 B | 59 ns / 0 B | Resilion allocates per-strategy closures; Polly's happy path is allocation-free |
-| Single retry (happy path) | 114 ns / 192 B | 165 ns / 0 B | Resilion faster in wall-clock time despite allocating |
-| Composite (Timeout+Retry+CB+Timeout) | 393 ns / 976 B | 734 ns / 0 B | The realistic multi-strategy shape most apps run |
-| Same pipeline, **sync** execution | 61 ns / 192 B | — | True sync — no `Task` machinery |
+| Empty pipeline | 70 ns / 96 B | 60 ns / 0 B | Resilion allocates per-strategy closures; Polly's happy path is allocation-free |
+| Single retry (happy path) | 117 ns / 192 B | 169 ns / 0 B | Resilion faster in wall-clock time despite allocating |
+| Composite (Timeout+Retry+CB+Timeout) | 488 ns / 1120 B | 740 ns / 0 B | The realistic multi-strategy shape most apps run |
+| Same pipeline, **sync** execution | 53 ns / 192 B | — | Real sync path — no `Task` machinery |
+
+The composite figure includes the cost of race-free timeout cancellation classification: 32 B per
+timeout strategy, plus a `CancellationToken` registration whenever the token reaching that timeout
+can be cancelled. A timeout nested inside another timeout always sees a cancellable token, so the
+canonical total-plus-per-attempt shape above pays 144 B more than a version that misclassifies user
+cancellation as a timeout under a race. See [docs/tradeoffs.md](docs/tradeoffs.md).
 
 Resilion is consistently faster wall-clock, at the cost of small per-call allocations from the
 middleware chain's closures (tracked in [future-plans.md](docs/future-plans.md) item #4). If

@@ -21,22 +21,13 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
         Func<ResilienceContext, ValueTask<Outcome<TResult>>> callback,
         ResilienceContext context)
     {
-        using var activity = ResilionTelemetry.ActivitySource.StartActivity("Hedging");
-        if (activity is not null)
-        {
-            activity.SetTag("strategy.name", "Hedging");
-            activity.SetTag("pipeline.name", context.PipelineName);
-            activity.SetTag("operation.key", context.OperationKey);
-        }
+        using var activity = StrategyActivity.Start("Hedging", context);
 
         if (_options.MaxHedgedAttempts == 1)
         {
             // No hedging — just execute the primary.
             var result = await callback(context).ConfigureAwait(context.ContinueOnCapturedContext);
-            if (activity is not null)
-            {
-                activity.SetTag("outcome", result.IsSuccess ? "success" : "failure");
-            }
+            StrategyActivity.SetOutcome(activity, result.IsSuccess ? "success" : "failure");
             return result;
         }
 
@@ -51,8 +42,12 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
 
             for (var attemptIndex = 1; attemptIndex < _options.MaxHedgedAttempts; attemptIndex++)
             {
+                // Resolved per attempt: the delay selects the mode, so a generator can make one
+                // attempt sequential and the next parallel. See HedgingDelayGenerator's remarks.
+                var hedgingDelay = ResolveHedgingDelay(attemptIndex, context);
+
                 // Wait for the hedging delay, or for the primary/earlier attempt to complete.
-                if (_options.HedgingDelay == System.Threading.Timeout.InfiniteTimeSpan)
+                if (hedgingDelay == System.Threading.Timeout.InfiniteTimeSpan)
                 {
                     // Sequential mode: wait for the current attempt to complete before launching next.
                     var completed = await attempts[^1].ConfigureAwait(false);
@@ -62,10 +57,10 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
                         return completed;
                     }
                 }
-                else if (_options.HedgingDelay > TimeSpan.Zero)
+                else if (hedgingDelay > TimeSpan.Zero)
                 {
                     // Latency mode: wait for the delay, but also check if any attempt completes early.
-                    var delayTask = Task.Delay(_options.HedgingDelay, _timeProvider, userToken);
+                    var delayTask = Task.Delay(hedgingDelay, _timeProvider, userToken);
                     var whenAnyTask = Task.WhenAny(attempts);
                     var winner = await Task.WhenAny(whenAnyTask, delayTask).ConfigureAwait(false);
 
@@ -104,10 +99,7 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
 
             // All attempts launched. Wait for the first success or all to fail.
             var outcome = await WaitForBestOutcome(attempts, userToken).ConfigureAwait(false);
-            if (activity is not null)
-            {
-                activity.SetTag("outcome", outcome.IsSuccess ? "success" : "hedging_exhausted");
-            }
+            StrategyActivity.SetOutcome(activity, outcome.IsSuccess ? "success" : "hedging_exhausted");
             return outcome;
         }
         finally
@@ -163,12 +155,17 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
         // Hedging's entire value proposition is running attempts concurrently. The sync path
         // can only ever run sequentially — silently degrading parallel/latency hedging to
         // sequential would give the caller zero indication their hedging isn't actually hedging.
-        if (_options.HedgingDelay != System.Threading.Timeout.InfiniteTimeSpan)
+        if (_options.HedgingDelayGenerator is not null
+            || _options.HedgingDelay != System.Threading.Timeout.InfiniteTimeSpan)
         {
             throw new InvalidOperationException(
-                "Parallel and latency hedging modes require async execution. Use ExecuteAsync(), " +
-                "or set HedgingDelay to Timeout.InfiniteTimeSpan for sequential mode.");
+                "Parallel and latency hedging modes require async execution, and a " +
+                "HedgingDelayGenerator cannot be evaluated on the synchronous path. Use " +
+                "ExecuteAsync(), or set HedgingDelay to Timeout.InfiniteTimeSpan with no " +
+                "generator for sequential mode.");
         }
+
+        using var activity = StrategyActivity.Start("Hedging", context);
 
         // Sequential mode: execute sequentially (equivalent to InfiniteTimeSpan mode).
         Outcome<TResult> lastOutcome = default;
@@ -183,6 +180,7 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
             // Matches async path behavior (ResilienceContextPool.Shared.Rent + CopyFrom).
             var attemptContext = ResilienceContextPool.Shared.Rent(context.CancellationToken);
             attemptContext.OperationKey = context.OperationKey;
+            attemptContext.PipelineName = context.PipelineName;
             attemptContext.ContinueOnCapturedContext = context.ContinueOnCapturedContext;
             attemptContext.Properties.CopyFrom(context.Properties);
             try
@@ -196,11 +194,16 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
 
             if (!_options.ShouldHandleOutcome(lastOutcome))
             {
+                StrategyActivity.SetOutcome(activity, "success");
                 return lastOutcome;
             }
 
             if (attemptIndex < _options.MaxHedgedAttempts - 1)
             {
+                // Mirror the async path: count the hedge launch regardless of whether an
+                // OnHedging handler is registered, so the counter and the event never disagree.
+                ResilionTelemetry.HedgingAttempts.Add(1, new(ResilionTelemetry.PipelineNameTag, context.PipelineName), new(ResilionTelemetry.OperationKeyTag, context.OperationKey));
+
                 if (_options.OnHedging is { } handler && handler.HasHandler)
                 {
                     handler.Invoke(new OnHedgingEvent<TResult>(attemptIndex + 1, context));
@@ -208,7 +211,31 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
             }
         }
 
+        StrategyActivity.SetOutcome(activity, "hedging_exhausted");
         return lastOutcome;
+    }
+
+    /// <summary>
+    /// Resolves the delay before launching <paramref name="attemptIndex"/>, preferring the
+    /// generator over the static value. A negative result other than <c>InfiniteTimeSpan</c> is
+    /// clamped to zero rather than throwing mid-execution.
+    /// </summary>
+    private TimeSpan ResolveHedgingDelay(int attemptIndex, ResilienceContext context)
+    {
+        if (_options.HedgingDelayGenerator is null)
+        {
+            return _options.HedgingDelay;
+        }
+
+        var delay = _options.HedgingDelayGenerator(
+            new HedgingDelayGeneratorArgs(attemptIndex, context));
+
+        if (delay == System.Threading.Timeout.InfiniteTimeSpan)
+        {
+            return delay;
+        }
+
+        return delay < TimeSpan.Zero ? TimeSpan.Zero : delay;
     }
 
     private void LaunchAttempt(
@@ -272,6 +299,7 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
             // Create a lightweight context copy with the per-attempt token.
             var attemptContext = ResilienceContextPool.Shared.Rent(ct);
             attemptContext.OperationKey = context.OperationKey;
+            attemptContext.PipelineName = context.PipelineName;
             attemptContext.ContinueOnCapturedContext = context.ContinueOnCapturedContext;
             attemptContext.Properties.CopyFrom(context.Properties);
             try

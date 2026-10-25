@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>Resilion.Http</PackageId>
+    <RootNamespace>Resilion.Http</RootNamespace>
+    <AssemblyName>Resilion.Http</AssemblyName>
+    <Description>HttpClient and IHttpClientFactory resilience for Resilion. AddStandardResilienceHandler, AddStandardHedgingHandler, and custom per-client resilience pipelines.</Description>
+    <!-- Matches Resilion.Extensions, which this transitively depends on. -->
+    <IsAotCompatible>false</IsAotCompatible>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Resilion.Http.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Resilion\Resilion.csproj" />
+    <ProjectReference Include="..\Resilion.Extensions\Resilion.Extensions.csproj" />
+    <ProjectReference Include="..\Resilion.RateLimiting\Resilion.RateLimiting.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.0" />
+  </ItemGroup>
+
+</Project>

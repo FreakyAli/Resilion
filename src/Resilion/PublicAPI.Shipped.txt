@@ -1,4 +1,346 @@
-# This file tracks the public API surface of Resilion v1.0.
-# It will be generated after v1.0 is shipped using PublicApiAnalyzers.
-# Until then, it serves as a placeholder to enable the analyzer.
-# See: https://github.com/dotnet/roslyn-analyzers/blob/main/src/PublicApiAnalyzers/PublicApiAnalyzers.Help.md
+#nullable enable
+Resilion.BreakDurationGeneratorArgs
+Resilion.BreakDurationGeneratorArgs.BreakDurationGeneratorArgs() -> void
+Resilion.BreakDurationGeneratorArgs.BreakDurationGeneratorArgs(int FailureCount, System.TimeSpan CurrentBreakDuration, Resilion.ResilienceContext! Context) -> void
+Resilion.BreakDurationGeneratorArgs.Context.get -> Resilion.ResilienceContext!
+Resilion.BreakDurationGeneratorArgs.Context.init -> void
+Resilion.BreakDurationGeneratorArgs.CurrentBreakDuration.get -> System.TimeSpan
+Resilion.BreakDurationGeneratorArgs.CurrentBreakDuration.init -> void
+Resilion.BreakDurationGeneratorArgs.FailureCount.get -> int
+Resilion.BreakDurationGeneratorArgs.FailureCount.init -> void
+Resilion.CircuitBreakerExtensions
+Resilion.CircuitBreakerManualControl
+Resilion.CircuitBreakerManualControl.CircuitBreakerManualControl() -> void
+Resilion.CircuitBreakerManualControl.IsolateAsync() -> System.Threading.Tasks.Task!
+Resilion.CircuitBreakerManualControl.ResetAsync() -> System.Threading.Tasks.Task!
+Resilion.CircuitBreakerStrategyOptions
+Resilion.CircuitBreakerStrategyOptions.BreakDuration.get -> System.TimeSpan
+Resilion.CircuitBreakerStrategyOptions.BreakDuration.init -> void
+Resilion.CircuitBreakerStrategyOptions.BreakDurationGenerator.get -> System.Func<Resilion.BreakDurationGeneratorArgs, System.TimeSpan>?
+Resilion.CircuitBreakerStrategyOptions.BreakDurationGenerator.init -> void
+Resilion.CircuitBreakerStrategyOptions.FailureRatioThreshold.get -> double
+Resilion.CircuitBreakerStrategyOptions.FailureRatioThreshold.init -> void
+Resilion.CircuitBreakerStrategyOptions.ManualControl.get -> Resilion.CircuitBreakerManualControl?
+Resilion.CircuitBreakerStrategyOptions.ManualControl.init -> void
+Resilion.CircuitBreakerStrategyOptions.MinimumThroughput.get -> int
+Resilion.CircuitBreakerStrategyOptions.MinimumThroughput.init -> void
+Resilion.CircuitBreakerStrategyOptions.OnClosed.get -> Resilion.ResilienceEventHandler<Resilion.CircuitStateChangedEvent>?
+Resilion.CircuitBreakerStrategyOptions.OnClosed.init -> void
+Resilion.CircuitBreakerStrategyOptions.OnHalfOpened.get -> Resilion.ResilienceEventHandler<Resilion.CircuitStateChangedEvent>?
+Resilion.CircuitBreakerStrategyOptions.OnHalfOpened.init -> void
+Resilion.CircuitBreakerStrategyOptions.OnOpened.get -> Resilion.ResilienceEventHandler<Resilion.CircuitStateChangedEvent>?
+Resilion.CircuitBreakerStrategyOptions.OnOpened.init -> void
+Resilion.CircuitBreakerStrategyOptions.SamplingDuration.get -> System.TimeSpan
+Resilion.CircuitBreakerStrategyOptions.SamplingDuration.init -> void
+Resilion.CircuitBreakerStrategyOptions.ShouldHandle.get -> System.Func<System.Exception!, bool>?
+Resilion.CircuitBreakerStrategyOptions.ShouldHandle.init -> void
+Resilion.CircuitBreakerStrategyOptions<TResult>
+Resilion.CircuitBreakerStrategyOptions<TResult>.BreakDuration.get -> System.TimeSpan
+Resilion.CircuitBreakerStrategyOptions<TResult>.BreakDuration.init -> void
+Resilion.CircuitBreakerStrategyOptions<TResult>.BreakDurationGenerator.get -> System.Func<Resilion.BreakDurationGeneratorArgs, System.TimeSpan>?
+Resilion.CircuitBreakerStrategyOptions<TResult>.BreakDurationGenerator.init -> void
+Resilion.CircuitBreakerStrategyOptions<TResult>.FailureRatioThreshold.get -> double
+Resilion.CircuitBreakerStrategyOptions<TResult>.FailureRatioThreshold.init -> void
+Resilion.CircuitBreakerStrategyOptions<TResult>.ManualControl.get -> Resilion.CircuitBreakerManualControl?
+Resilion.CircuitBreakerStrategyOptions<TResult>.ManualControl.init -> void
+Resilion.CircuitBreakerStrategyOptions<TResult>.MinimumThroughput.get -> int
+Resilion.CircuitBreakerStrategyOptions<TResult>.MinimumThroughput.init -> void
+Resilion.CircuitBreakerStrategyOptions<TResult>.OnClosed.get -> Resilion.ResilienceEventHandler<Resilion.CircuitStateChangedEvent>?
+Resilion.CircuitBreakerStrategyOptions<TResult>.OnClosed.init -> void
+Resilion.CircuitBreakerStrategyOptions<TResult>.OnHalfOpened.get -> Resilion.ResilienceEventHandler<Resilion.CircuitStateChangedEvent>?
+Resilion.CircuitBreakerStrategyOptions<TResult>.OnHalfOpened.init -> void
+Resilion.CircuitBreakerStrategyOptions<TResult>.OnOpened.get -> Resilion.ResilienceEventHandler<Resilion.CircuitStateChangedEvent>?
+Resilion.CircuitBreakerStrategyOptions<TResult>.OnOpened.init -> void
+Resilion.CircuitBreakerStrategyOptions<TResult>.SamplingDuration.get -> System.TimeSpan
+Resilion.CircuitBreakerStrategyOptions<TResult>.SamplingDuration.init -> void
+Resilion.CircuitBreakerStrategyOptions<TResult>.ShouldHandle.get -> System.Func<Resilion.Outcome<TResult>, bool>?
+Resilion.CircuitBreakerStrategyOptions<TResult>.ShouldHandle.init -> void
+Resilion.CircuitBrokenException
+Resilion.CircuitBrokenException.CircuitState.get -> Resilion.CircuitState
+Resilion.CircuitBrokenException.RetryAfter.get -> System.TimeSpan
+Resilion.CircuitState
+Resilion.CircuitState.Closed = 0 -> Resilion.CircuitState
+Resilion.CircuitState.HalfOpen = 2 -> Resilion.CircuitState
+Resilion.CircuitState.Isolated = 3 -> Resilion.CircuitState
+Resilion.CircuitState.Open = 1 -> Resilion.CircuitState
+Resilion.CircuitStateChangedEvent
+Resilion.CircuitStateChangedEvent.CircuitStateChangedEvent() -> void
+Resilion.CircuitStateChangedEvent.CircuitStateChangedEvent(Resilion.CircuitState PreviousState, Resilion.CircuitState CurrentState, Resilion.ResilienceContext! Context) -> void
+Resilion.CircuitStateChangedEvent.Context.get -> Resilion.ResilienceContext!
+Resilion.CircuitStateChangedEvent.Context.init -> void
+Resilion.CircuitStateChangedEvent.CurrentState.get -> Resilion.CircuitState
+Resilion.CircuitStateChangedEvent.CurrentState.init -> void
+Resilion.CircuitStateChangedEvent.PreviousState.get -> Resilion.CircuitState
+Resilion.CircuitStateChangedEvent.PreviousState.init -> void
+Resilion.FallbackAction<TResult>
+Resilion.FallbackAction<TResult>.FallbackAction() -> void
+Resilion.FallbackAction<TResult>.HasValue.get -> bool
+Resilion.FallbackContext<TResult>
+Resilion.FallbackContext<TResult>.Context.get -> Resilion.ResilienceContext!
+Resilion.FallbackContext<TResult>.Context.init -> void
+Resilion.FallbackContext<TResult>.Exception.get -> System.Exception?
+Resilion.FallbackContext<TResult>.FallbackContext() -> void
+Resilion.FallbackContext<TResult>.FallbackContext(Resilion.Outcome<TResult> Outcome, Resilion.ResilienceContext! Context) -> void
+Resilion.FallbackContext<TResult>.Outcome.get -> Resilion.Outcome<TResult>
+Resilion.FallbackContext<TResult>.Outcome.init -> void
+Resilion.FallbackExtensions
+Resilion.FallbackStrategyOptions<TResult>
+Resilion.FallbackStrategyOptions<TResult>.FallbackAction.get -> Resilion.FallbackAction<TResult>
+Resilion.FallbackStrategyOptions<TResult>.FallbackAction.init -> void
+Resilion.FallbackStrategyOptions<TResult>.OnFallback.get -> Resilion.ResilienceEventHandler<Resilion.OnFallbackEvent<TResult>>?
+Resilion.FallbackStrategyOptions<TResult>.OnFallback.init -> void
+Resilion.FallbackStrategyOptions<TResult>.ShouldHandle.get -> System.Func<Resilion.Outcome<TResult>, bool>?
+Resilion.FallbackStrategyOptions<TResult>.ShouldHandle.init -> void
+Resilion.HedgingActionContext
+Resilion.HedgingActionContext.AttemptNumber.get -> int
+Resilion.HedgingActionContext.AttemptNumber.init -> void
+Resilion.HedgingActionContext.HedgingActionContext() -> void
+Resilion.HedgingActionContext.HedgingActionContext(int AttemptNumber) -> void
+Resilion.HedgingExtensions
+Resilion.HedgingStrategyOptions<TResult>
+Resilion.HedgingStrategyOptions<TResult>.ActionGenerator.get -> System.Func<Resilion.HedgingActionContext, System.Func<System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<TResult>>?>?
+Resilion.HedgingStrategyOptions<TResult>.ActionGenerator.init -> void
+Resilion.HedgingStrategyOptions<TResult>.HedgingDelay.get -> System.TimeSpan
+Resilion.HedgingStrategyOptions<TResult>.HedgingDelay.init -> void
+Resilion.HedgingStrategyOptions<TResult>.MaxHedgedAttempts.get -> int
+Resilion.HedgingStrategyOptions<TResult>.MaxHedgedAttempts.init -> void
+Resilion.HedgingStrategyOptions<TResult>.OnHedging.get -> Resilion.ResilienceEventHandler<Resilion.OnHedgingEvent<TResult>>?
+Resilion.HedgingStrategyOptions<TResult>.OnHedging.init -> void
+Resilion.HedgingStrategyOptions<TResult>.ShouldHandle.get -> System.Func<Resilion.Outcome<TResult>, bool>?
+Resilion.HedgingStrategyOptions<TResult>.ShouldHandle.init -> void
+Resilion.OnFallbackEvent<TResult>
+Resilion.OnFallbackEvent<TResult>.Context.get -> Resilion.ResilienceContext!
+Resilion.OnFallbackEvent<TResult>.Context.init -> void
+Resilion.OnFallbackEvent<TResult>.FallbackResult.get -> TResult
+Resilion.OnFallbackEvent<TResult>.FallbackResult.init -> void
+Resilion.OnFallbackEvent<TResult>.OnFallbackEvent() -> void
+Resilion.OnFallbackEvent<TResult>.OnFallbackEvent(Resilion.Outcome<TResult> Outcome, TResult FallbackResult, Resilion.ResilienceContext! Context) -> void
+Resilion.OnFallbackEvent<TResult>.Outcome.get -> Resilion.Outcome<TResult>
+Resilion.OnFallbackEvent<TResult>.Outcome.init -> void
+Resilion.OnHedgingEvent<TResult>
+Resilion.OnHedgingEvent<TResult>.AttemptNumber.get -> int
+Resilion.OnHedgingEvent<TResult>.AttemptNumber.init -> void
+Resilion.OnHedgingEvent<TResult>.Context.get -> Resilion.ResilienceContext!
+Resilion.OnHedgingEvent<TResult>.Context.init -> void
+Resilion.OnHedgingEvent<TResult>.OnHedgingEvent() -> void
+Resilion.OnHedgingEvent<TResult>.OnHedgingEvent(int AttemptNumber, Resilion.ResilienceContext! Context) -> void
+Resilion.OnTimeoutArgs
+Resilion.OnTimeoutArgs.Context.get -> Resilion.ResilienceContext!
+Resilion.OnTimeoutArgs.Context.init -> void
+Resilion.OnTimeoutArgs.ElapsedTime.get -> System.TimeSpan
+Resilion.OnTimeoutArgs.ElapsedTime.init -> void
+Resilion.OnTimeoutArgs.OnTimeoutArgs() -> void
+Resilion.OnTimeoutArgs.OnTimeoutArgs(Resilion.ResilienceContext! Context, System.TimeSpan Timeout, System.TimeSpan ElapsedTime) -> void
+Resilion.OnTimeoutArgs.Timeout.get -> System.TimeSpan
+Resilion.OnTimeoutArgs.Timeout.init -> void
+Resilion.Outcome<TResult>
+Resilion.Outcome<TResult>.Equals(Resilion.Outcome<TResult> other) -> bool
+Resilion.Outcome<TResult>.Exception.get -> System.Exception?
+Resilion.Outcome<TResult>.GetResultOrDefault(TResult defaultValue = default(TResult)) -> TResult
+Resilion.Outcome<TResult>.IsFailure.get -> bool
+Resilion.Outcome<TResult>.IsSuccess.get -> bool
+Resilion.Outcome<TResult>.Match<T>(System.Func<TResult, T>! onSuccess, System.Func<System.Exception!, T>! onFailure) -> T
+Resilion.Outcome<TResult>.Outcome() -> void
+Resilion.Outcome<TResult>.Result.get -> TResult
+Resilion.Outcome<TResult>.ThrowIfFailed() -> TResult
+Resilion.Outcome<TResult>.TryGetResult(out TResult result) -> bool
+Resilion.Pipeline
+Resilion.Pipeline.Dispose() -> void
+Resilion.Pipeline.DisposeAsync() -> System.Threading.Tasks.ValueTask
+Resilion.Pipeline.Execute(System.Action<System.Threading.CancellationToken>! action, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> void
+Resilion.Pipeline.Execute<TResult, TState>(System.Func<TState, System.Threading.CancellationToken, TResult>! action, TState state, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> TResult
+Resilion.Pipeline.Execute<TResult>(System.Func<System.Threading.CancellationToken, TResult>! action, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> TResult
+Resilion.Pipeline.ExecuteAsync(System.Func<System.Threading.CancellationToken, System.Threading.Tasks.ValueTask>! action, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask
+Resilion.Pipeline.ExecuteAsync<TResult, TState>(System.Func<TState, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<TResult>>! action, TState state, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<TResult>
+Resilion.Pipeline.ExecuteAsync<TResult>(System.Func<System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<TResult>>! action, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<TResult>
+Resilion.Pipeline.ExecuteOutcomeAsync<TResult, TState>(System.Func<TState, Resilion.ResilienceContext!, System.Threading.Tasks.ValueTask<Resilion.Outcome<TResult>>>! action, TState state, Resilion.ResilienceContext! context) -> System.Threading.Tasks.ValueTask<Resilion.Outcome<TResult>>
+Resilion.Pipeline<TResult>
+Resilion.Pipeline<TResult>.Dispose() -> void
+Resilion.Pipeline<TResult>.DisposeAsync() -> System.Threading.Tasks.ValueTask
+Resilion.Pipeline<TResult>.Execute(System.Func<System.Threading.CancellationToken, TResult>! action, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> TResult
+Resilion.Pipeline<TResult>.Execute<TState>(System.Func<TState, System.Threading.CancellationToken, TResult>! action, TState state, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> TResult
+Resilion.Pipeline<TResult>.ExecuteAsync(System.Func<System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<TResult>>! action, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<TResult>
+Resilion.Pipeline<TResult>.ExecuteAsync<TState>(System.Func<TState, System.Threading.CancellationToken, System.Threading.Tasks.ValueTask<TResult>>! action, TState state, System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> System.Threading.Tasks.ValueTask<TResult>
+Resilion.Pipeline<TResult>.ExecuteOutcomeAsync<TState>(System.Func<TState, Resilion.ResilienceContext!, System.Threading.Tasks.ValueTask<Resilion.Outcome<TResult>>>! action, TState state, Resilion.ResilienceContext! context) -> System.Threading.Tasks.ValueTask<Resilion.Outcome<TResult>>
+Resilion.PipelineBuilder
+Resilion.PipelineBuilder.AddPipeline(Resilion.Pipeline! pipeline) -> Resilion.PipelineBuilder!
+Resilion.PipelineBuilder.AddStrategy(Resilion.Strategy! strategy) -> Resilion.PipelineBuilder!
+Resilion.PipelineBuilder.Build() -> Resilion.Pipeline!
+Resilion.PipelineBuilder.PipelineBuilder() -> void
+Resilion.PipelineBuilder<TResult>
+Resilion.PipelineBuilder<TResult>.AddPipeline(Resilion.Pipeline! pipeline) -> Resilion.PipelineBuilder<TResult>!
+Resilion.PipelineBuilder<TResult>.AddPipeline(Resilion.Pipeline<TResult>! pipeline) -> Resilion.PipelineBuilder<TResult>!
+Resilion.PipelineBuilder<TResult>.AddStrategy(Resilion.Strategy! strategy) -> Resilion.PipelineBuilder<TResult>!
+Resilion.PipelineBuilder<TResult>.AddStrategy(Resilion.Strategy<TResult>! strategy) -> Resilion.PipelineBuilder<TResult>!
+Resilion.PipelineBuilder<TResult>.AddStrategy(string! name, System.Func<Resilion.ResilienceContext!, System.Func<Resilion.ResilienceContext!, System.Threading.Tasks.ValueTask<Resilion.Outcome<TResult>>>!, System.Threading.Tasks.ValueTask<Resilion.Outcome<TResult>>>! handler) -> Resilion.PipelineBuilder<TResult>!
+Resilion.PipelineBuilder<TResult>.Build() -> Resilion.Pipeline<TResult>!
+Resilion.PipelineBuilder<TResult>.PipelineBuilder() -> void
+Resilion.PipelineBuilderBase
+Resilion.PipelineBuilderBase.Name.get -> string?
+Resilion.PipelineBuilderBase.Name.set -> void
+Resilion.PipelineBuilderBase.OnValidationWarning.get -> System.Action<string!>?
+Resilion.PipelineBuilderBase.OnValidationWarning.set -> void
+Resilion.PipelineBuilderBase.PipelineBuilderBase() -> void
+Resilion.PipelineBuilderBase.SuppressOrderingWarnings.get -> bool
+Resilion.PipelineBuilderBase.SuppressOrderingWarnings.set -> void
+Resilion.PipelineBuilderBase.ThrowOnOrderingErrors.get -> bool
+Resilion.PipelineBuilderBase.ThrowOnOrderingErrors.set -> void
+Resilion.PipelineBuilderBase.TimeProvider.get -> System.TimeProvider!
+Resilion.PipelineBuilderBase.TimeProvider.set -> void
+Resilion.ResilienceContext
+Resilion.ResilienceContext.CancellationToken.get -> System.Threading.CancellationToken
+Resilion.ResilienceContext.ContinueOnCapturedContext.get -> bool
+Resilion.ResilienceContext.ContinueOnCapturedContext.set -> void
+Resilion.ResilienceContext.OperationKey.get -> string?
+Resilion.ResilienceContext.OperationKey.set -> void
+Resilion.ResilienceContext.Properties.get -> Resilion.ResilienceProperties!
+Resilion.ResilienceContextPool
+Resilion.ResilienceContextPool.Rent(System.Threading.CancellationToken cancellationToken = default(System.Threading.CancellationToken)) -> Resilion.ResilienceContext!
+Resilion.ResilienceContextPool.ResilienceContextPool(int maxPoolSize = 256) -> void
+Resilion.ResilienceContextPool.Return(Resilion.ResilienceContext! context) -> void
+Resilion.ResilienceEventHandler<TArgs>
+Resilion.ResilienceEventHandler<TArgs>.HasHandler.get -> bool
+Resilion.ResilienceEventHandler<TArgs>.ResilienceEventHandler() -> void
+Resilion.ResilienceProperties
+Resilion.ResilienceProperties.Count.get -> int
+Resilion.ResilienceProperties.GetValue<TValue>(Resilion.ResiliencePropertyKey<TValue> key, TValue defaultValue = default(TValue)) -> TValue
+Resilion.ResilienceProperties.Remove<TValue>(Resilion.ResiliencePropertyKey<TValue> key) -> bool
+Resilion.ResilienceProperties.ResilienceProperties() -> void
+Resilion.ResilienceProperties.Set<TValue>(Resilion.ResiliencePropertyKey<TValue> key, TValue value) -> void
+Resilion.ResilienceProperties.TryGetValue<TValue>(Resilion.ResiliencePropertyKey<TValue> key, out TValue? value) -> bool
+Resilion.ResiliencePropertyKey<TValue>
+Resilion.ResiliencePropertyKey<TValue>.Equals(Resilion.ResiliencePropertyKey<TValue> other) -> bool
+Resilion.ResiliencePropertyKey<TValue>.Key.get -> string!
+Resilion.ResiliencePropertyKey<TValue>.ResiliencePropertyKey() -> void
+Resilion.ResiliencePropertyKey<TValue>.ResiliencePropertyKey(string! key) -> void
+Resilion.ResilionException
+Resilion.ResilionException.ResilionException(string! message) -> void
+Resilion.ResilionException.ResilionException(string! message, System.Exception! innerException) -> void
+Resilion.ResilionTelemetry
+Resilion.RetryAttemptEvent
+Resilion.RetryAttemptEvent.AttemptNumber.get -> int
+Resilion.RetryAttemptEvent.AttemptNumber.init -> void
+Resilion.RetryAttemptEvent.Context.get -> Resilion.ResilienceContext!
+Resilion.RetryAttemptEvent.Context.init -> void
+Resilion.RetryAttemptEvent.Exception.get -> System.Exception!
+Resilion.RetryAttemptEvent.Exception.init -> void
+Resilion.RetryAttemptEvent.RetryAttemptEvent() -> void
+Resilion.RetryAttemptEvent.RetryAttemptEvent(int AttemptNumber, System.TimeSpan RetryDelay, System.Exception! Exception, Resilion.ResilienceContext! Context) -> void
+Resilion.RetryAttemptEvent.RetryDelay.get -> System.TimeSpan
+Resilion.RetryAttemptEvent.RetryDelay.init -> void
+Resilion.RetryAttemptEvent<TResult>
+Resilion.RetryAttemptEvent<TResult>.AttemptNumber.get -> int
+Resilion.RetryAttemptEvent<TResult>.AttemptNumber.init -> void
+Resilion.RetryAttemptEvent<TResult>.Context.get -> Resilion.ResilienceContext!
+Resilion.RetryAttemptEvent<TResult>.Context.init -> void
+Resilion.RetryAttemptEvent<TResult>.Outcome.get -> Resilion.Outcome<TResult>
+Resilion.RetryAttemptEvent<TResult>.Outcome.init -> void
+Resilion.RetryAttemptEvent<TResult>.RetryAttemptEvent() -> void
+Resilion.RetryAttemptEvent<TResult>.RetryAttemptEvent(int AttemptNumber, System.TimeSpan RetryDelay, Resilion.Outcome<TResult> Outcome, Resilion.ResilienceContext! Context) -> void
+Resilion.RetryAttemptEvent<TResult>.RetryDelay.get -> System.TimeSpan
+Resilion.RetryAttemptEvent<TResult>.RetryDelay.init -> void
+Resilion.RetryDelay
+Resilion.RetryDelayContext
+Resilion.RetryDelayContext.AttemptNumber.get -> int
+Resilion.RetryDelayContext.AttemptNumber.init -> void
+Resilion.RetryDelayContext.RetryDelayContext() -> void
+Resilion.RetryDelayContext.RetryDelayContext(int AttemptNumber) -> void
+Resilion.RetryExtensions
+Resilion.RetryStrategyOptions
+Resilion.RetryStrategyOptions.Delay.get -> Resilion.RetryDelay!
+Resilion.RetryStrategyOptions.Delay.init -> void
+Resilion.RetryStrategyOptions.MaxDelay.get -> System.TimeSpan?
+Resilion.RetryStrategyOptions.MaxDelay.init -> void
+Resilion.RetryStrategyOptions.MaxRetryAttempts.get -> int
+Resilion.RetryStrategyOptions.MaxRetryAttempts.init -> void
+Resilion.RetryStrategyOptions.OnRetry.get -> Resilion.ResilienceEventHandler<Resilion.RetryAttemptEvent>?
+Resilion.RetryStrategyOptions.OnRetry.init -> void
+Resilion.RetryStrategyOptions.ShouldHandle.get -> System.Func<System.Exception!, bool>?
+Resilion.RetryStrategyOptions.ShouldHandle.init -> void
+Resilion.RetryStrategyOptions.UseJitter.get -> bool
+Resilion.RetryStrategyOptions.UseJitter.init -> void
+Resilion.RetryStrategyOptions<TResult>
+Resilion.RetryStrategyOptions<TResult>.Delay.get -> Resilion.RetryDelay!
+Resilion.RetryStrategyOptions<TResult>.Delay.init -> void
+Resilion.RetryStrategyOptions<TResult>.MaxDelay.get -> System.TimeSpan?
+Resilion.RetryStrategyOptions<TResult>.MaxDelay.init -> void
+Resilion.RetryStrategyOptions<TResult>.MaxRetryAttempts.get -> int
+Resilion.RetryStrategyOptions<TResult>.MaxRetryAttempts.init -> void
+Resilion.RetryStrategyOptions<TResult>.OnRetry.get -> Resilion.ResilienceEventHandler<Resilion.RetryAttemptEvent<TResult>>?
+Resilion.RetryStrategyOptions<TResult>.OnRetry.init -> void
+Resilion.RetryStrategyOptions<TResult>.ShouldHandle.get -> System.Func<Resilion.Outcome<TResult>, bool>?
+Resilion.RetryStrategyOptions<TResult>.ShouldHandle.init -> void
+Resilion.RetryStrategyOptions<TResult>.UseJitter.get -> bool
+Resilion.RetryStrategyOptions<TResult>.UseJitter.init -> void
+Resilion.Strategy
+Resilion.Strategy.Strategy() -> void
+Resilion.Strategy<TResult>
+Resilion.Strategy<TResult>.Strategy() -> void
+Resilion.TimeoutExtensions
+Resilion.TimeoutGeneratorArgs
+Resilion.TimeoutGeneratorArgs.Context.get -> Resilion.ResilienceContext!
+Resilion.TimeoutGeneratorArgs.Context.init -> void
+Resilion.TimeoutGeneratorArgs.TimeoutGeneratorArgs() -> void
+Resilion.TimeoutGeneratorArgs.TimeoutGeneratorArgs(Resilion.ResilienceContext! Context) -> void
+Resilion.TimeoutRejectedException
+Resilion.TimeoutRejectedException.ConfiguredTimeout.get -> System.TimeSpan
+Resilion.TimeoutRejectedException.ElapsedTime.get -> System.TimeSpan
+Resilion.TimeoutStrategyOptions
+Resilion.TimeoutStrategyOptions.OnTimeout.get -> Resilion.ResilienceEventHandler<Resilion.OnTimeoutArgs>?
+Resilion.TimeoutStrategyOptions.OnTimeout.init -> void
+Resilion.TimeoutStrategyOptions.Timeout.get -> System.TimeSpan
+Resilion.TimeoutStrategyOptions.Timeout.init -> void
+Resilion.TimeoutStrategyOptions.TimeoutGenerator.get -> System.Func<Resilion.TimeoutGeneratorArgs, System.TimeSpan>?
+Resilion.TimeoutStrategyOptions.TimeoutGenerator.init -> void
+abstract Resilion.Strategy.ExecuteAsync<TResult>(System.Func<Resilion.ResilienceContext!, System.Threading.Tasks.ValueTask<Resilion.Outcome<TResult>>>! callback, Resilion.ResilienceContext! context) -> System.Threading.Tasks.ValueTask<Resilion.Outcome<TResult>>
+abstract Resilion.Strategy<TResult>.ExecuteAsync(System.Func<Resilion.ResilienceContext!, System.Threading.Tasks.ValueTask<Resilion.Outcome<TResult>>>! callback, Resilion.ResilienceContext! context) -> System.Threading.Tasks.ValueTask<Resilion.Outcome<TResult>>
+const Resilion.ResilionTelemetry.ActivitySourceName = "Resilion" -> string!
+const Resilion.ResilionTelemetry.MeterName = "Resilion" -> string!
+const Resilion.ResilionTelemetry.OperationKeyTag = "operation.key" -> string!
+const Resilion.ResilionTelemetry.PipelineNameTag = "pipeline.name" -> string!
+override Resilion.Outcome<TResult>.Equals(object? obj) -> bool
+override Resilion.Outcome<TResult>.GetHashCode() -> int
+override Resilion.Outcome<TResult>.ToString() -> string!
+override Resilion.ResiliencePropertyKey<TValue>.Equals(object? obj) -> bool
+override Resilion.ResiliencePropertyKey<TValue>.GetHashCode() -> int
+override Resilion.ResiliencePropertyKey<TValue>.ToString() -> string!
+static Resilion.CircuitBreakerExtensions.AddCircuitBreaker(this Resilion.PipelineBuilder! builder, Resilion.CircuitBreakerStrategyOptions? options = null) -> Resilion.PipelineBuilder!
+static Resilion.CircuitBreakerExtensions.AddCircuitBreaker<TResult>(this Resilion.PipelineBuilder<TResult>! builder, Resilion.CircuitBreakerStrategyOptions<TResult>! options) -> Resilion.PipelineBuilder<TResult>!
+static Resilion.CircuitBreakerExtensions.AddCircuitBreaker<TResult>(this Resilion.PipelineBuilder<TResult>! builder, Resilion.CircuitBreakerStrategyOptions? options = null) -> Resilion.PipelineBuilder<TResult>!
+static Resilion.FallbackAction<TResult>.implicit operator Resilion.FallbackAction<TResult>(System.Func<Resilion.FallbackContext<TResult>, System.Threading.Tasks.ValueTask<TResult>>! factory) -> Resilion.FallbackAction<TResult>
+static Resilion.FallbackAction<TResult>.implicit operator Resilion.FallbackAction<TResult>(System.Func<Resilion.FallbackContext<TResult>, TResult>! factory) -> Resilion.FallbackAction<TResult>
+static Resilion.FallbackAction<TResult>.implicit operator Resilion.FallbackAction<TResult>(TResult value) -> Resilion.FallbackAction<TResult>
+static Resilion.FallbackExtensions.AddFallback<TResult>(this Resilion.PipelineBuilder<TResult>! builder, Resilion.FallbackStrategyOptions<TResult>! options) -> Resilion.PipelineBuilder<TResult>!
+static Resilion.HedgingExtensions.AddHedging<TResult>(this Resilion.PipelineBuilder<TResult>! builder, Resilion.HedgingStrategyOptions<TResult>! options) -> Resilion.PipelineBuilder<TResult>!
+static Resilion.Outcome<TResult>.FromException(System.Exception! exception) -> Resilion.Outcome<TResult>
+static Resilion.Outcome<TResult>.FromResult(TResult result) -> Resilion.Outcome<TResult>
+static Resilion.Outcome<TResult>.implicit operator Resilion.Outcome<TResult>(TResult result) -> Resilion.Outcome<TResult>
+static Resilion.Outcome<TResult>.operator !=(Resilion.Outcome<TResult> left, Resilion.Outcome<TResult> right) -> bool
+static Resilion.Outcome<TResult>.operator ==(Resilion.Outcome<TResult> left, Resilion.Outcome<TResult> right) -> bool
+static Resilion.Pipeline.Create(System.Action<Resilion.PipelineBuilder!>! configure) -> Resilion.Pipeline!
+static Resilion.Pipeline.Create<TResult>(System.Action<Resilion.PipelineBuilder<TResult>!>! configure) -> Resilion.Pipeline<TResult>!
+static Resilion.Pipeline.Empty.get -> Resilion.Pipeline!
+static Resilion.Pipeline<TResult>.Empty.get -> Resilion.Pipeline<TResult>!
+static Resilion.ResilienceContextPool.Shared.get -> Resilion.ResilienceContextPool!
+static Resilion.ResilienceEventHandler<TArgs>.implicit operator Resilion.ResilienceEventHandler<TArgs>(System.Action<TArgs>! handler) -> Resilion.ResilienceEventHandler<TArgs>
+static Resilion.ResilienceEventHandler<TArgs>.implicit operator Resilion.ResilienceEventHandler<TArgs>(System.Func<TArgs, System.Threading.Tasks.ValueTask>! handler) -> Resilion.ResilienceEventHandler<TArgs>
+static Resilion.ResiliencePropertyKey<TValue>.operator !=(Resilion.ResiliencePropertyKey<TValue> left, Resilion.ResiliencePropertyKey<TValue> right) -> bool
+static Resilion.ResiliencePropertyKey<TValue>.operator ==(Resilion.ResiliencePropertyKey<TValue> left, Resilion.ResiliencePropertyKey<TValue> right) -> bool
+static Resilion.RetryDelay.Constant(System.TimeSpan delay) -> Resilion.RetryDelay!
+static Resilion.RetryDelay.Custom(System.Func<Resilion.RetryDelayContext, System.TimeSpan>! compute) -> Resilion.RetryDelay!
+static Resilion.RetryDelay.Exponential(System.TimeSpan baseDelay, System.TimeSpan? maxDelay = null) -> Resilion.RetryDelay!
+static Resilion.RetryDelay.Linear(System.TimeSpan baseDelay, System.TimeSpan? maxDelay = null) -> Resilion.RetryDelay!
+static Resilion.RetryDelay.None.get -> Resilion.RetryDelay!
+static Resilion.RetryExtensions.AddRetry(this Resilion.PipelineBuilder! builder, Resilion.RetryStrategyOptions? options = null) -> Resilion.PipelineBuilder!
+static Resilion.RetryExtensions.AddRetry<TResult>(this Resilion.PipelineBuilder<TResult>! builder, Resilion.RetryStrategyOptions<TResult>! options) -> Resilion.PipelineBuilder<TResult>!
+static Resilion.RetryExtensions.AddRetry<TResult>(this Resilion.PipelineBuilder<TResult>! builder, Resilion.RetryStrategyOptions? options = null) -> Resilion.PipelineBuilder<TResult>!
+static Resilion.TimeoutExtensions.AddTimeout(this Resilion.PipelineBuilder! builder, Resilion.TimeoutStrategyOptions? options = null) -> Resilion.PipelineBuilder!
+static Resilion.TimeoutExtensions.AddTimeout(this Resilion.PipelineBuilder! builder, System.TimeSpan timeout) -> Resilion.PipelineBuilder!
+static Resilion.TimeoutExtensions.AddTimeout<TResult>(this Resilion.PipelineBuilder<TResult>! builder, Resilion.TimeoutStrategyOptions? options = null) -> Resilion.PipelineBuilder<TResult>!
+static Resilion.TimeoutExtensions.AddTimeout<TResult>(this Resilion.PipelineBuilder<TResult>! builder, System.TimeSpan timeout) -> Resilion.PipelineBuilder<TResult>!
+virtual Resilion.Strategy.Dispose() -> void
+virtual Resilion.Strategy.DisposeAsync() -> System.Threading.Tasks.ValueTask
+virtual Resilion.Strategy.Execute<TResult>(System.Func<Resilion.ResilienceContext!, Resilion.Outcome<TResult>>! callback, Resilion.ResilienceContext! context) -> Resilion.Outcome<TResult>
+virtual Resilion.Strategy<TResult>.Dispose() -> void
+virtual Resilion.Strategy<TResult>.DisposeAsync() -> System.Threading.Tasks.ValueTask
+virtual Resilion.Strategy<TResult>.Execute(System.Func<Resilion.ResilienceContext!, Resilion.Outcome<TResult>>! callback, Resilion.ResilienceContext! context) -> Resilion.Outcome<TResult>

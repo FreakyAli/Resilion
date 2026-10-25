@@ -10,13 +10,13 @@ Job=ShortRun  IterationCount=3  LaunchCount=1
 WarmupCount=3  
 
 ```
-| Method                       | Mean        | Error      | StdDev    | Ratio     | RatioSD  | Gen0   | Allocated | Alloc Ratio |
-|----------------------------- |------------:|-----------:|----------:|----------:|---------:|-------:|----------:|------------:|
-| DirectCall                   |   0.0770 ns |  0.7340 ns | 0.0402 ns |      1.26 |     0.93 |      - |         - |          NA |
-| Resilion_Empty               |  69.4926 ns |  6.6621 ns | 0.3652 ns |  1,137.25 |   609.03 | 0.0114 |      96 B |          NA |
-| Polly_Empty                  |  58.5517 ns |  3.0302 ns | 0.1661 ns |    958.20 |   513.13 |      - |         - |          NA |
-| Resilion_Retry_HappyPath     | 113.8271 ns |  7.8695 ns | 0.4314 ns |  1,862.78 |   997.55 | 0.0229 |     192 B |          NA |
-| Polly_Retry_HappyPath        | 165.4505 ns | 18.3020 ns | 1.0032 ns |  2,707.60 | 1,450.02 |      - |         - |          NA |
-| Resilion_Composite_HappyPath | 392.8716 ns | 43.2298 ns | 2.3696 ns |  6,429.34 | 3,443.15 | 0.1163 |     976 B |          NA |
-| Polly_Composite_HappyPath    | 733.9476 ns | 20.2942 ns | 1.1124 ns | 12,011.05 | 6,432.00 |      - |         - |          NA |
-| Resilion_Retry_Sync          |  61.1025 ns | 31.5703 ns | 1.7305 ns |    999.94 |   536.18 | 0.0229 |     192 B |          NA |
+| Method                       | Mean        | Error       | StdDev     | Median      | Ratio | RatioSD | Gen0   | Allocated | Alloc Ratio |
+|----------------------------- |------------:|------------:|-----------:|------------:|------:|--------:|-------:|----------:|------------:|
+| DirectCall                   |   0.0064 ns |   0.2014 ns |  0.0110 ns |   0.0000 ns |     ? |       ? |      - |         - |           ? |
+| Resilion_Empty               |  69.7421 ns |   3.3161 ns |  0.1818 ns |  69.6444 ns |     ? |       ? | 0.0114 |      96 B |           ? |
+| Polly_Empty                  |  59.9433 ns |   0.3970 ns |  0.0218 ns |  59.9489 ns |     ? |       ? |      - |         - |           ? |
+| Resilion_Retry_HappyPath     | 115.7802 ns |   4.0554 ns |  0.2223 ns | 115.8675 ns |     ? |       ? | 0.0229 |     192 B |           ? |
+| Polly_Retry_HappyPath        | 166.6076 ns |   5.7315 ns |  0.3142 ns | 166.4953 ns |     ? |       ? |      - |         - |           ? |
+| Resilion_Composite_HappyPath | 476.2153 ns | 292.6871 ns | 16.0432 ns | 485.1351 ns |     ? |       ? | 0.1335 |    1120 B |           ? |
+| Polly_Composite_HappyPath    | 744.6206 ns | 270.1220 ns | 14.8063 ns | 737.3242 ns |     ? |       ? |      - |         - |           ? |
+| Resilion_Retry_Sync          |  53.1058 ns |   7.1679 ns |  0.3929 ns |  52.9346 ns |     ? |       ? | 0.0229 |     192 B |           ? |

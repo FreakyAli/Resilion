@@ -19,11 +19,13 @@ All metrics are on the `"Resilion"` meter.
 
 All counters are tagged with context about the operation:
 
+Counters carry exactly two tags. Which strategy emitted the measurement is identified by the
+instrument name itself (`resilion.retry.attempts`, `resilion.timeout.expirations`, …), not by a tag.
+
 | Tag | Example | Notes |
 |-----|---------|-------|
-| `pipeline.name` | `"http-api"` | Name passed to `AddResiliencePipeline()` or pipeline name in registry |
-| `operation.key` | `"GET /users"` | Custom operation key from `ResilienceContext` |
-| `strategy` | `"retry"` | Strategy type (implicit in metric name) |
+| `pipeline.name` | `"http-api"` | Name passed to `AddResiliencePipeline()` or the registry key. **Null** for unnamed pipelines, and null for any strategy nested inside hedging — see the gap note below |
+| `operation.key` | `"GET /users"` | Custom operation key from `ResilienceContext`. Null unless you set it |
 
 Example: A `resilion.retry.attempts` counter for a named pipeline emits as:
 ```
@@ -32,9 +34,14 @@ resilion.retry.attempts{pipeline.name="http-api", operation.key="GET /users"} = 
 
 This allows dashboards and alerting rules to group by pipeline and operation.
 
+Counters are emitted identically on the asynchronous and synchronous paths, and strategies nested
+inside a hedging strategy carry the enclosing pipeline's name. Both are pinned by tests
+(`HedgingAttempts_SyncAndAsyncAgreeOnCount`, `NestedStrategyInsideHedging_EmitsPipelineNameTag`),
+because both were previously broken in ways that were invisible until someone read a dashboard.
+
 ## ActivitySource spans
 
-Resilion also emits OpenTelemetry `Activity` spans for distributed tracing. Each strategy execution creates a span named after the strategy.
+Resilion also emits OpenTelemetry `Activity` spans for distributed tracing, named after the strategy.
 
 ### Subscribing to ActivitySource
 
@@ -56,17 +63,30 @@ ActivitySource.AddActivityListener(listener);
 
 ### Span names and tags
 
-Each strategy creates a span with contextual information:
+A span carries exactly four tags. These are the only keys the code sets — there is no `attempt`
+tag and no `duration_ms` tag (use the span's own start/stop timestamps for duration).
 
 ```
-Activity.OperationName = "Retry"  // or Timeout, CircuitBreaker, etc.
+Activity.OperationName = "Retry"  // or Timeout, Fallback, CircuitBreaker, RateLimiter, Hedging
 Activity.Tags:
-  - "strategy" → "retry"
-  - "pipeline.name" → "http-api"
-  - "operation.key" → "GET /users"
-  - "attempt" → "1" (for retryable strategies)
-  - "duration_ms" → "150" (execution time)
+  - "strategy.name"  → "Retry"
+  - "pipeline.name"  → "http-api"      // null for unnamed pipelines
+  - "operation.key"  → "GET /users"    // null unless set on ResilienceContext
+  - "outcome"        → "retry_exhausted"
 ```
+
+`outcome` is set when the strategy finishes, and its vocabulary is strategy-specific:
+
+| Value | Emitted by |
+|-------|------------|
+| `success` | every strategy, when the wrapped call succeeded |
+| `failure` | every strategy, when the wrapped call returned a handled failure |
+| `exception` | circuit breaker, when the call threw |
+| `timeout` / `no_timeout` | timeout |
+| `rejected` | circuit breaker (open circuit), rate limiter |
+| `retry_exhausted` | retry, when all attempts were used |
+| `fallback_applied` | fallback, when the fallback value was returned |
+| `hedging_exhausted` | hedging, when no attempt succeeded |
 
 ## Subscribing
 

@@ -2,550 +2,778 @@
 
 Features, improvements, and known tradeoffs still open for future versions of Resilion. This
 is a todo list, not a changelog — once something here is implemented, it comes out of this file
-(see [CHANGELOG.md](../CHANGELOG.md) for what's already shipped). Each section includes enough
-detail to serve as a starting point for implementation.
+in the same PR (see [CONTRIBUTING.md](../CONTRIBUTING.md) § Future-plans hygiene for the rule, and
+[CHANGELOG.md](../CHANGELOG.md) for what's already shipped). Each entry includes enough detail to
+serve as a starting point for implementation.
 
 ## Type Classification
 
 | Type | Meaning | Impact | Examples |
 |------|---------|--------|----------|
 | **Feature** | New capability that extends Resilion's functionality beyond current scope | Additive — users gain new resilience options or integrations | Rate Limiter, Hedging, DI integration, Telemetry |
-| **Fix** | Correctness issue, performance bug, or missing validation in existing features | Blocking/Correctness — existing code may behave incorrectly or sub-optimally | Per-call closure allocation, WaitHandle allocation |
+| **Fix** | Correctness issue, performance bug, or missing validation in existing features | Blocking/Correctness — existing code may behave incorrectly or sub-optimally | Timeout cancellation race, missing telemetry increments |
 | **Documentation** | Gaps in docs, missing behavioral explanations, or unclear semantics | Clarity — improves developer experience and correctness of usage | Strategy ordering guide, cancellation semantics |
-| **Improvement** | Enhancement to an existing feature that doesn't change its API contract | Quality — existing code works but could work better | CTS pooling, delegate caching |
-| **Infrastructure** | CI/CD, packaging, tooling, or repository quality improvements | Adoption — removes friction for users and contributors | Benchmarks, icon, README |
+| **Improvement** | Enhancement to an existing feature that doesn't change its API contract | Quality — existing code works but could work better | Retry loop deduplication, CTS pooling |
+| **Infrastructure** | CI/CD, packaging, tooling, or repository quality improvements | Adoption — removes friction for users and contributors | Benchmarks, SourceLink, public API enforcement |
 
-**How to use this guide:**
-- **Fixes** should be prioritized over Features if they affect correctness
-- **Documentation** should accompany every Feature (document what it does and why)
-- New contributors reading this can quickly understand priority and scope
+**How to read this file**
+
+- **Every entry carries front-matter** stating its `Status`, `Type`, `Target` release, and the date
+  and command last used to **verify** its factual claims. `Status: Complete` is not a legal value —
+  a completed item leaves this file.
+- **`Target` answers "is this a release blocker?"**; `Priority` answers "how much does it matter?".
+  Conflating the two is what let three already-implemented items sit in this file as open work.
+- **Fixes** are prioritized over Features when they affect correctness.
+- **Documentation** accompanies every Feature — document what it does and why.
+- **No claim about current behaviour is written from memory.** Re-run the command from
+  [verification.md](verification.md) and record it in the entry's `Verified` field.
 
 ## Priority Matrix
 
-| # | Item | Priority | Type | Impact | Effort | Notes |
-|---|------|----------|------|--------|--------|-------|
-| 39 | Resilion.Http — HttpClient integration | P1 | Feature | Critical | High | AddStandardResilienceHandler() for IHttpClientFactory. #1 missing feature for adoption |
-| 49 | Telemetry counters carry no dimensions/tags | P1 | Fix | Critical | Medium | Add pipeline.name, operation.key tags to all counter increments |
-| 50 | ActivitySource is declared but never used | P1 | Fix | Medium | Medium | Wrap strategy execution in StartActivity() or remove promise |
-| 51 | No public API surface tracking | P1 | Infrastructure | Critical | Low | PublicApiAnalyzers, PublicAPI.Shipped.txt, CI enforcement |
-| 4 | Per-call delegate allocation in pipeline chain | P2 | Fix | Medium | High | Middleware pattern inherent cost |
-| 5 | CancellationTokenSource pooling for Timeout/Hedging | P2 | Improvement | Medium | Medium | Reduce alloc on hot path |
-| 11 | Hedging: Task.WhenAny memory leak | P2 | Fix | Medium | Medium | Continuations not deregistered on losing tasks |
-| 27 | Retry typed/non-generic strategy duplication (~100 lines) | P2 | Improvement | Medium | Medium | Extract shared retry loop |
-| 40 | Resilion.Chaos — Chaos engineering | P2 | Feature | Medium | High | Fault/outcome/latency/behavior injection (Simmy equivalent) |
-| 41 | Pipeline dynamic reload via IOptionsMonitor | P2 | Feature | Medium | High | Auto-recreate pipeline when bound options change |
-| 42 | Keyed services support | P2 | Feature | Medium | Medium | [FromKeyedServices("key")] for direct DI injection (.NET 8+) |
-| 46 | Timeout cancellation TOCTOU race fix | P2 | Fix | Low | Low | Eliminate narrow race in WasCancelledByTimeout — moved from tradeoffs.md |
-| 52 | No SourceLink, symbol packages, or deterministic builds | P2 | Infrastructure | Medium | Low | PublishRepositoryUrl, IncludeSymbols, SymbolPackageFormat, ContinuousIntegrationBuild |
-| 9 | WaitHandle allocation in sync retry | P3 | Fix | Low | Low | CancellationToken.WaitHandle lazy alloc |
-| 10 | Resilion.Testing package | P3 | Feature | Medium | Low | Test doubles, assertion helpers |
-| 12 | Hedging: HedgingDelayGenerator | P3 | Feature | Low | Low | Dynamic delay per attempt |
-| 30 | FallbackAction/ResilienceEventHandler Task.Run missing CancellationToken | P3 | Fix | Low | Low | Sync-over-async wrappers can't be interrupted by cancellation |
-| 43 | PredicateBuilder&lt;T&gt; fluent API | P3 | Feature | Low | Medium | .Handle&lt;TException&gt;().HandleResult(r => ...) with implicit conversion |
-| 44 | IConfiguration binding for strategy options | P3 | Feature | Low | Medium | Strategy options from appsettings.json |
-| 45 | Telemetry enrichment (MeteringEnricher, listeners) | P3 | Feature | Low | Medium | Custom tags, raw event listeners, severity control |
-| 47 | CI code coverage collection | P3 | Infrastructure | Low | Medium | Blocked — verified incompatibility, see item #47 below |
-| 48 | Benchmark CI on PRs | P3 | Infrastructure | Low | Low | Catch perf regressions automatically instead of only on manual runs |
-| 53 | No SECURITY.md | P3 | Documentation | Low | Low | Vulnerability disclosure policy for OSS infrastructure library |
-| 54 | Evaluate multi-targeting net9.0 for System.Threading.Lock | P3 | Improvement | Low | Medium | Benchmark vs object lock, conditional compile if faster |
+Generated from the entries below. A row here without a `### <n>.` entry below — or an
+entry without a row here — is a bug in this file; see CONTRIBUTING.md § Future-plans hygiene.
+
+| # | Item | Priority | Type | Target | Effort | Status |
+|---|------|----------|------|--------|--------|--------|
+| 62 | Event handler properties reject a bare lambda | P1 | Improvement | post-1.0 | Medium | Open |
+| 63 | Outcome-aware retry delay (blocks Retry-After) | P1 | Feature | post-1.0 | Medium | Open |
+| 4 | Per-call delegate allocation in pipeline chain | P1 | Improvement | post-1.0 | High | Open |
+| 64 | Composable event handlers | P2 | Improvement | unscheduled | Medium | Open |
+| 65 | Registry factory with IServiceProvider | P2 | Improvement | unscheduled | Low | Open |
+| 66 | Synchronous ExecuteOutcome | P3 | Feature | unscheduled | Medium | Open |
+| 27 | Retry typed/untyped strategy duplication (4 loops) | P1 | Improvement | post-1.0 | Medium | Open |
+| 30 | FallbackAction/ResilienceEventHandler Task.Run missing token | P1 | Fix | post-1.0 | Low | Open |
+| 9 | Sync retry delay bypasses TimeProvider (untestable) | P1 | Fix | post-1.0 | Low | Open |
+| 54 | Evaluate multi-targeting net9.0 for System.Threading.Lock | P1 | Improvement | post-1.0 | Medium | Open |
+| 45 | Telemetry enrichment (MeteringEnricher, listeners) | P2 | Feature | unscheduled | High | Open |
+| 67 | Registry caches a failed pipeline build until invalidated | P2 | Improvement | unscheduled | Low | Open |
+| 40 | Resilion.Chaos — chaos engineering | P2 | Feature | unscheduled | High | Open |
+| 11 | Hedging: O(N²) WhenAny continuation registration (needs #54) | P2 | Improvement | unscheduled | Medium | Open |
+| 5 | CancellationTokenSource pooling for Timeout | P2 | Improvement | unscheduled | Medium | Open |
+| 48 | Benchmark CI on PRs | P3 | Infrastructure | unscheduled | Low | Open |
+| 47 | CI code coverage collection | P3 | Infrastructure | unscheduled | Medium | **Blocked** |
 
 ---
 
-## P1 — Pre-v1.0 or Shortly After
+## P0 — Must land before 1.0.0
 
-### ✅ 49. Telemetry Counters Carry No Dimensions/Tags — IMPLEMENTED
+_Empty._ Everything that was blocking 1.0.0 has shipped — see `## Retired items` and
+[CHANGELOG.md](../CHANGELOG.md). A new entry belongs here only if it makes something the library
+already claims untrue, or produces a silently wrong answer.
 
-**Status:** Complete  
-**What was done:**
-1. Added `pipeline.name` and `operation.key` tag constants to `ResilionTelemetry`
-2. Extended `ResilienceContext` with `PipelineName` property
-3. Modified `Pipeline` and `Pipeline<TResult>` to store and pass pipeline name through context
-4. Updated `PipelineBuilder.Build()` to pass name to Pipeline constructor
-5. Updated `ResiliencePipelineRegistry` to set builder.Name from the pipeline key
-6. Updated all counter.Add() calls in 6 strategy files to include tags:
-   - RetryStrategy.cs (4 locations)
-   - CircuitBreakerStateMachine.cs (2 locations)
-   - TimeoutStrategy.cs (2 locations)
-   - FallbackStrategy.cs (2 locations)
-   - HedgingStrategy.cs (1 location)
-   - RateLimiterStrategy.cs (2 locations)
+## P1 — Next (post-1.0)
 
-**Files modified:** 11 core files + bug fixes  
-**Verification:** All counters now emit with pipeline.name and operation.key tags
+### 62. Event Handler Properties Reject a Bare Lambda
 
----
-
-### ✅ 50. ActivitySource Is Declared But Never Used — IMPLEMENTED
-
-**Status:** Complete  
-**What was done:**
-1. Added `using System.Diagnostics` to 6 strategy files
-2. Wrapped strategy execution in `ActivitySource.StartActivity()` calls
-3. Set tags for strategy name, pipeline name, and operation key on each activity
-4. Tagged outcomes with strategy-specific values (success, failure, timeout, rejected, etc.)
-5. Implemented spans in:
-   - RetryStrategy (both async and sync)
-   - TimeoutStrategy (both async and sync)
-   - FallbackStrategy (both async and sync)
-   - HedgingStrategy (async path)
-   - CircuitBreakerStrategy (both async and sync)
-   - RateLimiterStrategy (both async and sync)
-
-**Files modified:** 6 strategy files  
-**Verification:** Spans now emitted with distributed tracing support enabled
-
----
-
-### ✅ 51. No Public API Surface Tracking — IMPLEMENTED
-
-**Status:** Complete  
-**What was done:**
-1. Added `Microsoft.CodeAnalysis.PublicApiAnalyzers` (v3.3.4) to `src/Directory.Build.props`
-2. Created PublicAPI.Shipped.txt and PublicAPI.Unshipped.txt files for all 3 public packages:
-   - Resilion/PublicAPI.Shipped.txt
-   - Resilion/PublicAPI.Unshipped.txt
-   - Resilion.Extensions/PublicAPI.Shipped.txt
-   - Resilion.Extensions/PublicAPI.Unshipped.txt
-   - Resilion.RateLimiting/PublicAPI.Shipped.txt
-   - Resilion.RateLimiting/PublicAPI.Unshipped.txt
-3. Analyzer now enforces that all public APIs must be explicitly tracked
-4. CI builds will fail if public surface changes without updating the .Unshipped.txt files
-
-**Files modified:** 1 (Directory.Build.props) + 6 new API tracking files  
-**Verification:** Build succeeds, analyzer correctly identifies undocumented public APIs
-
----
-
-## P1 — Pre-v1.0 or Shortly After
-
-### 39. Resilion.Http — HttpClient Integration
-
-**Type:** Feature — Critical for Adoption
+**Status:** Open
+**Type:** Improvement
+**Target:** post-1.0
+**Verified:** 2026-10-23 — compiled `new RetryStrategyOptions { OnRetry = ctx => ... }` against the
+built `Resilion.dll`: `error CS1660`. A method group gives `error CS0428`. A typed local, an inline
+cast, and `new Action<TArgs>(...)` all compile.
 
 **Why**
 
-The most common use case for a resilience library is wrapping `HttpClient` calls. Polly's `Microsoft.Extensions.Http.Resilience` package provides `AddStandardResilienceHandler()` which adds a pre-configured 5-strategy pipeline to an `HttpClient` via `IHttpClientFactory`. Without this, Resilion misses the #1 onboarding path.
-
-**Design**
-
-New package `Resilion.Http` with:
-- `AddStandardResilienceHandler()` extension on `IHttpClientBuilder` — pre-configured pipeline: RateLimiter → TotalTimeout → Retry → CircuitBreaker → AttemptTimeout, with defaults matching Polly's (retry on 5xx, 429, 408, `HttpRequestException`, `TimeoutRejectedException`)
-- `AddStandardHedgingHandler()` — replaces retry with hedging for latency-sensitive scenarios
-- `AddResilienceHandler(key, builder => ...)` — custom pipeline on a named HttpClient
-
-Implementation: `DelegatingHandler` wrapping the Resilion pipeline. References `Resilion.Extensions` and `Microsoft.Extensions.Http`.
-
-**Performance note:** HttpClient pipelines are a hot path in high-throughput services (potentially millions of calls/sec). The per-call delegate allocation in the pipeline chain (#4 below) is acceptable for general use but may start showing up in profiles once this package ships. Benchmark the standard resilience handler under load and revisit #4 if closure allocations become a measurable cost at that scale.
-
----
-
-### 49. Telemetry Counters Carry No Dimensions/Tags
-
-**Type:** Fix — Correctness
-
-**Why**
-
-Every counter increment in the codebase fires with zero tags. In `RetryStrategy.cs`, `CircuitBreakerStateMachine.cs`, `TimeoutStrategy.cs`, `FallbackStrategy.cs`, `HedgingStrategy.cs`, and `RateLimiterStrategy.cs`, every call to `.Add(1)` on counters like `ResilionTelemetry.RetryAttempts`, `CircuitBreakerStateChanges`, `TimeoutExpirations`, `FallbackActivations`, `HedgingAttempts`, and `RateLimiterRejections` passes zero tags.
-
-In an application with two named pipelines both using Retry, the `resilion.retry.attempts` counter cannot distinguish which pipeline is retrying. The counter becomes nearly useless for observability in multi-pipeline scenarios.
-
-**Fix**
-
-Thread the following tags to every `.Add()` call:
-- `pipeline.name` — sourced from `PipelineBuilderBase.Name` (already available at build time, must be passed through `ResilienceContext` at execution time)
-- `operation.key` — sourced from `ResilienceContext.OperationKey` (already exists but is never read for telemetry)
-
-Grep confirms zero tag usage across all strategy files. This is a correctness gap in the telemetry contract, not a nice-to-have. Untagged counters in multi-instance deployments are close to useless for debugging and alerting.
-
-**Effort:** Medium. Requires threading pipeline name through context initialization and reading `OperationKey` at each counter site.
-
----
-
-### 50. ActivitySource Is Declared But Never Used
-
-**Type:** Fix — Correctness
-
-**Why**
-
-`ResilionTelemetry.ActivitySource` is declared as `new ActivitySource("Resilion")` and its XML documentation explicitly instructs consumers to `.AddSource("Resilion")` for distributed tracing support. Grep across all of `src/` finds zero calls to `.StartActivity()` anywhere in the codebase.
-
-This is the same class of problem as the dead `StrategyExecutions` and `StrategyDuration` counters that were already removed from this file — an unverified telemetry promise is worse than no promise. The ActivitySource is technically "used" (publicly declared, referenced in XML docs) but never actually emits a span. Any consumer configuring their tracing stack to listen for "Resilion" will receive nothing.
-
-**Fix**
-
-Either:
-
-1. **Implement spans:** Wrap each strategy's `ExecuteAsync` and `Execute` entry point in a `StartActivity()` call, tagged with strategy name, pipeline name, and outcome (success/failure/cancelled). Wire the resulting `Activity` through to telemetry for correlation. This is the preferred path — spans are valuable for latency profiling and distributed tracing in high-scale systems.
-
-2. **Remove the ActivitySource:** Delete the declaration and the misleading XML docs if tracing is not a v1.0 priority. This is acceptable; the promise can be reinstated when the feature is actually implemented.
-
-The current state (declared but unused) is untenable — it signals a feature that doesn't work.
-
-**Effort:** Medium for implementation, trivial for removal.
-
----
-
-### 51. No Public API Surface Tracking
-
-**Type:** Infrastructure — Correctness
-
-**Why**
-
-Nothing in this repository guards against accidental breaking changes after v1.0 ships. Confirmed via repo-wide grep: zero matches for "PublicAPI", "ApiCompat", or "PublicApiAnalyzers". No `Microsoft.CodeAnalysis.PublicApiAnalyzers` in dependencies. No `PublicAPI.Shipped.txt` / `PublicAPI.Unshipped.txt` files. No `Microsoft.DotNet.ApiCompat` CI check.
-
-Once the API is frozen at v1.0, there is no automated enforcement preventing a later PR from silently changing a public method signature, removing a member, or adding an unintended public API. This is standard practice in shipping libraries (Polly, NUnit, xunit all use PublicApiAnalyzers).
-
-**Fix**
-
-1. Add `Microsoft.CodeAnalysis.PublicApiAnalyzers` NuGet package to `src/Directory.Build.props`.
-2. After v1.0 ships, generate `PublicAPI.Shipped.txt` files for each public project per the tool's documentation.
-3. Add a CI check in `.github/workflows/` that fails any PR changing public surface without updating the corresponding `.Unshipped.txt` file.
-
-**Effort:** Low. The package is zero-configuration after initial setup. The CI check is a single MSBuild step.
-
----
-
-## P2 — Do Next / Post-v1.0
-
-### 4. Per-Call Delegate Allocation in Pipeline Chain
-
-**Type:** Fix — Performance
-
-**Why**
-
-In `StrategyComponent.ExecuteAsync`, the lambda `ctx => _next.ExecuteAsync(callback, ctx)` creates a closure capturing `_next` and `callback` on every call. In a pipeline with N strategies, this means N small closure allocations per execution.
-
-**Current State**
-
-This is inherent to the middleware/chain-of-responsibility pattern. Polly v8 has the same cost. The allocations are small (one closure object + one delegate per strategy per call) and negligible compared to real I/O costs. Confirmed empirically in [benchmarks/results](../benchmarks/results/README.md): Resilion's happy-path pipelines allocate a few hundred bytes where Polly's are allocation-free, but Resilion is still faster wall-clock time across every shape benchmarked.
-
-**Potential Fix**
-
-Pre-compose the delegate chain at build time into a single `Func<ResilienceContext, Func<...>, ValueTask<Outcome<T>>>` that doesn't allocate per call. This requires complex generic type threading and may not be feasible without sacrificing API simplicity.
-
-**Decision:** Accept for now. Revisit if profiling on a real high-throughput workload (see #39's performance note) shows it matters.
-
----
-
-### 5. CancellationTokenSource Pooling for Timeout
-
-**Type:** Improvement — Performance
-
-**Why**
-
-The Timeout strategy allocates one `CancellationTokenSource` per execution. `CancellationTokenSource.TryReset()` (available since .NET 6) enables pooling — reset and reuse instead of allocating.
-
-**Design**
-
-Use `ObjectPool<CancellationTokenSource>` with a custom policy that calls `TryReset()` on return. If `TryReset()` returns false (the CTS was cancelled), discard instead of pooling.
-
-**Complexity:** Medium. `TryReset()` has edge cases around timer state and concurrent cancellation.
-
-**Decision:** Implement after benchmarks confirm the CTS allocation is a meaningful cost.
-
----
-
-### 11. Hedging: Task.WhenAny Memory Leak
-
-**Type:** Fix — Performance/Correctness
-
-**Why**
-
-`WaitForBestOutcome` uses `Task.WhenAny(remaining)` in a loop, removing completed tasks from the list. The standard `Task.WhenAny` implementation registers a continuation on every task in the list. When a task completes, the continuations on the *other* tasks are not deregistered — they hold references to the `Task.WhenAny` result task and its captured state, preventing garbage collection until all tasks in the list complete.
-
-In a pipeline with 3+ hedged attempts where the first wins quickly, the losing tasks' continuations hold memory until they eventually complete or are cancelled.
-
-**Potential Fix**
-
-Implement a custom `FirstCompletedAsync` that uses `TaskCompletionSource` + per-task continuations that deregister themselves on completion. Or use `WaitAsync` chaining.
-
-**Impact:** Medium. Only affects memory under hedging with many concurrent attempts. The cleanup in `finally` (awaiting all tasks) limits the leak duration.
+`ResilienceEventHandler<TArgs>` is a wrapper struct with implicit conversions from
+`Action<TArgs>` and `Func<TArgs, ValueTask>`. Implicit conversion does not help the compiler
+convert a *lambda*, because a lambda needs a delegate target type and this is not one. So the
+obvious syntax does not compile:
+
+```csharp
+// CS1660
+new RetryStrategyOptions { OnRetry = ctx => logger.LogWarning("retry {N}", ctx.AttemptNumber) };
+
+// CS0428
+new RetryStrategyOptions { OnRetry = LogRetry };
+```
+
+and the caller must write `new Action<RetryAttemptEvent>(ctx => ...)`, an inline cast, or a typed
+local instead.
+
+This matters more than a normal papercut because sync callback ergonomics is one of the five
+reasons `comparison-with-polly.md` gives for choosing this library, and Polly's plain-delegate
+properties *do* take a lambda. The README's own example was uncompilable from 1.0 until it was
+corrected — nobody had run it.
+
+**Possible fixes**
+
+1. **Add `Action<TArgs>`-typed sibling properties** (`OnRetryAction` and friends) alongside the
+   existing ones, with the options record reconciling them. Purely additive, works on a frozen
+   surface, but doubles the callback surface and creates two ways to say one thing — which is
+   exactly what `RetryDelay`'s closed union exists to avoid.
+2. **Make the options properties plain `Action<TArgs>`** and move the sync-or-async union behind a
+   separate `...Async` property per callback. Cleanest to use, but a breaking change to every
+   options record, so 2.0 only.
+3. **Document it and accept it.** Current state. The implicit conversions still earn their keep —
+   a synchronous handler runs inline with no `ValueTask` allocation — the cost is brevity, not
+   performance.
+
+Decide between (1) and (2) before 2.0 rather than drifting into (3) permanently.
 
 ---
 
 ### 27. Retry Typed/Non-Generic Strategy Duplication
 
-**Type:** Improvement — Maintainability
+**Status:** Open
+**Type:** Improvement
+**Target:** post-1.0
+**Blocks:** nothing, but see #56 — the span-scaffolding extraction there is the part #56 needed.
+**Verified:** 2026-09-30 — `grep -c 'for (var attempt = 0' src/Resilion/Retry/RetryStrategy.cs` → 4;
+`wc -l src/Resilion/Retry/RetryStrategy.cs` → 302.
 
 **Why**
 
-`RetryStrategy` / `RetryStrategy<T>` duplicate ~100 lines of identical retry loop (4 copies: async+sync × typed+untyped). The equivalent circuit breaker duplication was already extracted into a shared `CircuitBreakerStateMachine` — that extraction is exactly what let the CB race-condition fix apply to both variants automatically instead of needing to be kept in sync by hand. Retry doesn't have shared mutable state the way CB does, so the risk of silent divergence is lower, but the duplication itself is the same shape of problem.
+`RetryStrategy` / `RetryStrategy<T>` hold **four independent retry loops** — `:19-103` (~85 lines),
+`:105-181` (~77), `:198-250` (~53), `:252-301` (~50). Each carries its own `for`, predicate check,
+`MaxDelay` clamp, telemetry increment, `OnRetry` invocation and delay wait. The equivalent circuit
+breaker duplication was already extracted into a shared `CircuitBreakerStateMachine` — and that
+extraction is exactly what let the CB race-condition fix apply to both variants automatically instead
+of being kept in sync by hand.
+
+**Risk:** a bug fix applied to one copy but not the other causes silent behavioural divergence between
+the typed and non-generic variants. This already happened once: the untyped pair is ~30 lines longer
+than the typed pair *because* it carries span code the typed pair lacks (#56).
 
 **Fix**
 
-Extract a shared retry loop parameterized on `Func<Outcome<T>, bool>` for the predicate check, following the same pattern used for the CB state machine.
+Extract a shared retry loop. It must be parameterized over two things that genuinely differ: the
+predicate (untyped: an `outcome.IsSuccess` early return plus `ShouldHandleException(outcome.Exception!)`;
+typed: `ShouldHandleOutcome(outcome)`) and the `OnRetry` argument type (`RetryAttemptEvent` vs
+`RetryAttemptEvent<TResult>`).
 
-**Risk:** A bug fix applied to one copy but not the other causes silent behavioral divergence between typed and non-generic variants of the same strategy.
+**Do it only with the benchmark numbers in hand.** Delegate-based parameterization adds per-execution
+closure allocations to the library's most-advertised hot path (114 ns / 192 B for a single retry, 61 ns
+/ 192 B sync). An allocation-free version needs a generic-struct-constrained-interface shim so the JIT
+specializes. Either way, commit the re-run benchmark results with the change.
 
----
+**Safe to attempt once #55 and #56 have landed** — their parity tests
+(`HedgingAttempts_SyncAndAsyncAgreeOnCount`, `TypedAndUntypedPipelines_EmitTheSameSpanNames`) pin the
+observable behaviour of all four paths before the loops merge. **Public API: none**, if done as an
+internal shared loop or internal shim. If the design starts wanting a public extension point, stop
+and get that approved separately.
 
-### 40. Resilion.Chaos — Chaos Engineering
-
-**Type:** Feature
-
-**Why**
-
-Polly v8.3+ includes Simmy for chaos engineering — fault injection, outcome injection, latency injection, and behavior injection. This is table stakes for production resilience testing.
-
-**Design**
-
-New package `Resilion.Chaos` with four strategies: `AddChaosFault`, `AddChaosOutcome`, `AddChaosLatency`, `AddChaosBehavior`. Common options: `InjectionRate` (0–1), `InjectionRateGenerator` (dynamic), `Enabled` (bool), `EnabledGenerator` (dynamic enable/disable). Generators take precedence over static values. Chaos strategies go last in the pipeline so outer resilience strategies react to injected chaos.
-
----
-
-### 41. Pipeline Dynamic Reload via IOptionsMonitor
-
-**Type:** Feature
-
-**Why**
-
-Polly supports `context.EnableReloads<TOptions>()` which auto-recreates pipelines when `IOptionsMonitor<T>` detects a configuration change. Without this, changing retry counts or timeout durations requires an app restart.
-
-**Design**
-
-`ResiliencePipelineRegistry` gains `IChangeToken` support. When a watched `IOptionsMonitor<T>` fires, the registry invalidates the cached `Lazy<Pipeline>` for the affected key, creates a new one from the updated options, and atomically swaps it. In-flight executions on the old pipeline complete normally; new calls get the new pipeline. `OnPipelineDisposed` callback fires after the old pipeline has no outstanding executions.
+**Effort:** Medium.
 
 ---
 
-### 42. Keyed Services Support
+### 30. FallbackAction/ResilienceEventHandler `Task.Run` Missing `CancellationToken`
 
-**Type:** Feature
-
-**Why**
-
-.NET 8 introduced keyed DI services (`[FromKeyedServices("key")]`). Polly v8.3+ supports this for direct injection of named pipelines without going through the registry.
-
-**Fix:** Register each named pipeline as a keyed singleton alongside the registry entry. Consumers can inject `[FromKeyedServices("http-api")] Pipeline pipeline` directly.
-
----
-
-### 46. Timeout Cancellation TOCTOU Race Fix
-
-**Type:** Fix — Correctness (moved from [tradeoffs.md](tradeoffs.md))
+**Status:** Open
+**Type:** Fix
+**Target:** post-1.0
+**Verified:** 2026-09-30 — `grep -n 'Task.Run' src/Resilion/Fallback/FallbackAction.cs src/Resilion/ResilienceEventHandler.cs`
+→ `FallbackAction.cs:64`, `ResilienceEventHandler.cs:93`, neither passing a token.
 
 **Why**
 
-`WasCancelledByTimeout` in `TimeoutStrategy.cs` checks `linkedCts.IsCancellationRequested && !userToken.IsCancellationRequested`. Between the two reads, the user token could become cancelled, causing user cancellation to be misclassified as a timeout (`TimeoutRejectedException` instead of `OperationCanceledException`). The window is nanoseconds wide but it exists, and "we know about the race but chose not to fix it" is a bad look for a library claiming production readiness.
+Both `FallbackAction<T>.Execute` and `ResilienceEventHandler<T>.Invoke` call
+`Task.Run(() => …).GetAwaiter().GetResult()` for sync-over-async without passing a
+`CancellationToken`.
+
+**Be accurate about the benefit.** `Task.Run(f, ct)` only declines to *schedule* work when `ct` is
+already cancelled. It cannot interrupt a running handler, and the surrounding
+`.GetAwaiter().GetResult()` blocks the calling thread regardless. So this is correct hygiene, not a
+cancellation fix — which is why it is not a blocker.
 
 **Fix**
 
-Capture the user token's cancellation state **before** awaiting the callback:
+Cheap and API-free. `ResilienceEventHandler<TArgs>.Invoke` is internal, so it can take a
+`CancellationToken cancellationToken = default` parameter with zero public-API impact, threaded from
+`context.CancellationToken` at each internal call site. `FallbackContext<TResult>` already carries
+`Context.CancellationToken`, so `FallbackAction.Execute` needs no signature change at all.
 
-1. Read `bool userWasCancelledBefore = userToken.IsCancellationRequested` before the `await callback(context)` call.
-2. After the callback throws `OperationCanceledException`, classify as timeout if: `linkedCts.IsCancellationRequested && !userWasCancelledBefore && !userToken.IsCancellationRequested`.
-3. The pre-capture eliminates the race: if the user token was already cancelling before the call, it's always user cancellation. If it wasn't, and the linked CTS fired, it's a timeout.
+**Tests must force a `SynchronizationContext`** to reach the `Task.Run` branch — the handler
+short-circuits the thread hop entirely when `SynchronizationContext.Current is null`, which is the
+common case and the default under xunit.
 
-Alternative (even tighter): register a `CancellationTokenRegistration` on the user token that sets a `volatile bool _userCancelled` flag. Check that flag instead of re-reading the token. Dispose the registration in `finally`. This is ~5 lines and eliminates the race entirely.
-
-**Effort:** Low. The fix is a few lines in `TimeoutStrategy.cs`.
+**Effort:** Low.
 
 ---
 
-### 52. No SourceLink, Symbol Packages, or Deterministic Builds
+### 9. Sync Retry Delay Bypasses `TimeProvider` (Untestable)
 
-**Type:** Infrastructure — Developer Experience
+**Status:** Open
+**Type:** Fix
+**Target:** post-1.0
+**Verified:** 2026-09-30 — `grep -n 'WaitHandle' src/Resilion/Retry/RetryStrategy.cs`
+→ `:170` and `:295`, both `context.CancellationToken.WaitHandle.WaitOne(delay)`.
 
 **Why**
 
-Confirmed via grep of `src/Directory.Build.props`: zero instances of `PublishRepositoryUrl`, `EmbedUntrackedSources`, `IncludeSymbols`, `SymbolPackageFormat`, or `ContinuousIntegrationBuild` properties anywhere in the build configuration.
+This entry previously claimed that `CancellationToken.WaitHandle` "lazily allocates a
+`ManualResetEvent` that is never explicitly disposed … on every retry delay". **That is wrong.** The
+handle is allocated **once per `CancellationTokenSource`**, is disposed with the CTS, and for a
+default (`CanBeCanceled == false`) token the runtime uses a static never-signalled event with no
+allocation at all. Across a retry loop the cost amortises to near zero, and the obvious alternatives
+are worse: `Thread.Sleep` loses cancellation responsiveness, spin-polling burns CPU.
 
-Consumers of the Resilion NuGet packages cannot step into Resilion's source code while debugging — SourceLink metadata is missing. No `.snupkg` symbol package is published. This is low-effort but high-trust: Polly, most Microsoft.Extensions libraries, and serious .NET OSS projects enable this by default.
+**The real defect** is that `RetryStrategy.cs:170` and `:295` wait via `WaitHandle.WaitOne(delay)`,
+**bypassing `_timeProvider` entirely**. `builder.TimeProvider` is this repo's single time-injection
+seam — it is how every other timing test uses `FakeTimeProvider`. So **synchronous retry delays cannot
+be driven by a fake clock, and no sync retry-timing test can be deterministic.**
 
 **Fix**
 
-1. Add `Microsoft.SourceLink.GitHub` package reference to `src/Directory.Build.props`.
-2. Add the following properties to `src/Directory.Build.props` (or per-project as needed):
-   - `<PublishRepositoryUrl>true</PublishRepositoryUrl>`
-   - `<EmbedUntrackedSources>true</EmbedUntrackedSources>`
-   - `<IncludeSymbols>true</IncludeSymbols>`
-   - `<SymbolPackageFormat>snupkg</SymbolPackageFormat>`
-3. In the release CI job (`.github/workflows/`), set `<ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>` only during the release build (not in local dev builds — deterministic builds interact poorly with incremental local builds).
+Needs a sync-waitable abstraction over `TimeProvider` — something that can block the calling thread
+for a provider-controlled duration while remaining cancellation-responsive. That is a design change,
+not a patch, which is why this is not a 1.0 item. Do it when someone actually needs deterministic
+sync-retry timing coverage.
 
-**Impact:** Users can now debug into Resilion. Symbol packages enable IDE integration and offline symbol resolution.
-
-**Effort:** Low. These are standard MSBuild properties. No code changes required.
+**Effort:** Low to write, medium to design well.
 
 ---
 
-## P3 — Backlog
+### 54. Evaluate Multi-Targeting net9.0 for `System.Threading.Lock`
 
-### 9. WaitHandle Allocation in Sync Retry
-
-**Type:** Fix — Performance (minor)
+**Status:** Open
+**Type:** Improvement
+**Target:** post-1.0
+**Verified:** 2026-09-30 — `grep -n 'TargetFramework' src/Directory.Build.props` → `net8.0` (singular);
+`grep -rn 'System.Threading.Lock\|NET9_0_OR_GREATER' src/ --include='*.cs'` → 0 hits.
 
 **Why**
 
-The sync retry path uses `context.CancellationToken.WaitHandle.WaitOne(delay)` for cancellation-aware sleep. Accessing `CancellationToken.WaitHandle` lazily allocates a `ManualResetEvent` that is never explicitly disposed. This happens on every retry delay in the sync path.
+.NET 9 introduced `System.Threading.Lock`, a purpose-built synchronization primitive faster than
+`lock(object)` under contention. `CircuitBreakerStateMachine.cs:23` and `SlidingWindow.cs:20` both hold
+a lock on every call while in the Closed state — the most common state in healthy systems.
 
-**Potential Fix**
+**Plan the experiment, not the change.**
 
-Use `SpinWait` with periodic `IsCancellationRequested` checks for short delays, and `ManualResetEventSlim` with explicit disposal for longer delays. Or use `TimeProvider.CreateTimer` with a `ManualResetEventSlim` signal.
+The existing `CircuitBreakerLoadBenchmarks` **cannot answer this question** — it is single-threaded,
+and `System.Threading.Lock`'s advantage is a contention-path property. Two new benchmarks are required:
 
-**Decision:** Low priority. The sync retry path is not the hot path in most applications. Revisit if sync usage proves significant.
+1. `LockPrimitiveBenchmarks` — an isolated micro-benchmark that does not reference the library. Two
+   standalone copies of `SlidingWindow`'s hot path (record a sample + compute the ratio, inside the
+   lock), one per lock type behind `#if NET9_0_OR_GREATER`, with `[Params(1, 4, 16, 64)] int Threads`
+   driving concurrent callers against one instance. The benchmarks project already multi-targets
+   `net8.0;net10.0`, so this compiles as-is.
+2. `CircuitBreakerLoadBenchmarks.Closed_MixedTraffic_Concurrent` with
+   `[Params(1, 4, 16, 64)] int Concurrency`. **Needed regardless of this item** — the suite currently
+   has no contention coverage for the library's only lock-per-call path.
 
----
+**Decision rule — agree it before benchmarking, so the outcome isn't negotiated after the numbers
+land.** Proceed only if all three hold:
 
-### 10. Resilion.Testing Package
+- **(a)** At `Threads >= 16`, `System.Threading.Lock` is **>= 5% faster in mean wall-clock** in the
+  micro-benchmark, with non-overlapping confidence intervals.
+- **(b)** The same **>= 5%** shows up end-to-end at `Concurrency >= 16`. A micro-benchmark win that
+  doesn't survive the full pipeline is not a user-visible win.
+- **(c)** At 1 and 4 threads, the new lock is **not more than 2% slower**. The uncontended case is the
+  common one; a regression there is a **veto**.
 
-**Type:** Feature — Test Infrastructure
+**If it passes**, the code change is trivial but the cost is not: `<TargetFrameworks>net8.0;net9.0</TargetFrameworks>`
+affects every src project; `test.yml`'s matrix varies the *SDK*, not the TFM, so it needs a TFM
+dimension or the net9.0 assemblies are built but never tested; `ci.yml`'s `aot-verify` hardcodes a
+`net8.0` publish path; and `release-nuget.yml` must pack both TFMs. **Keep the change purely
+internal** so `PublicAPI.*.txt` stays TFM-invariant.
 
-**Why**
+**Expected outcome: it fails its own gate.** The documented win is concentrated in the uncontended
+fast path and in avoiding `Monitor`'s thread-static lookups; clearing 5% at the full-pipeline level,
+where an execution is already hundreds of nanoseconds, is a high bar. **If it fails, commit the
+numbers to `benchmarks/results/` and rewrite this entry as "Evaluated and rejected", with a link** —
+so it stops reading as pending work.
 
-Users testing code that uses Resilion need test doubles and assertion helpers. Currently `Microsoft.Extensions.TimeProvider.Testing.FakeTimeProvider` covers the primary scenario, but a dedicated package could provide:
-- `TestPipeline` / `TestPipeline<T>` that record all executions
-- Circuit breaker state assertion helpers
-- Deterministic event capture
-- Pre-configured pipelines for common test scenarios
-
-**Decision:** Defer until real usage patterns emerge from production users.
-
----
-
-### 12. Hedging: HedgingDelayGenerator
-
-**Type:** Feature — Strategy Enhancement
-
-**Why**
-
-The current `HedgingDelay` is a static `TimeSpan` — the same delay for every hedged attempt. Some scenarios benefit from dynamic delays (e.g., shorter delays for later attempts, or delays computed from recent latency percentiles).
-
-**Design**
-
-Add `Func<HedgingDelayGeneratorArgs, TimeSpan>? HedgingDelayGenerator` to `HedgingStrategyOptions<T>`. When set, `HedgingDelay` is ignored for that attempt.
-
-```csharp
-public readonly record struct HedgingDelayGeneratorArgs(int AttemptNumber, ResilienceContext Context);
-```
-
-**Complexity:** Low. Thread the generator call into the delay logic in the for-loop.
+**Effort:** Medium, almost entirely benchmarking time.
 
 ---
 
-### 30. FallbackAction/ResilienceEventHandler Task.Run Missing CancellationToken
+### 63. Outcome-Aware Retry Delay
 
-**Type:** Fix — Minor correctness
-
-**Why**
-
-Both `FallbackAction<T>.Execute` and `ResilienceEventHandler<T>.Invoke` call `Task.Run(() => ...).GetAwaiter().GetResult()` for sync-over-async without passing `CancellationToken` to `Task.Run`. The blocking call can't be interrupted by cancellation.
-
-**Impact:** Low. Only affects sync path with async handlers/factories, and the underlying async operation would need to observe its own token anyway.
-
----
-
-### 43. PredicateBuilder&lt;T&gt; Fluent API
-
-**Type:** Feature — API Ergonomics
-
-**Why**
-
-Polly provides `new PredicateBuilder<HttpResponseMessage>().Handle<HttpRequestException>().HandleResult(r => r.StatusCode == 500)` with implicit conversion to `Func<Outcome<T>, bool>`. Resilion requires writing the full predicate lambda manually. For simple cases this is fine, but complex predicates get verbose.
-
-**Fix:** Add a `PredicateBuilder<T>` class with `.Handle<TException>()`, `.HandleResult(Func<T, bool>)`, and implicit conversion to `Func<Outcome<T>, bool>`. Low priority — the current lambda approach works and is more explicit.
-
----
-
-### 44. IConfiguration Binding for Strategy Options
-
+**Status:** Open
 **Type:** Feature
+**Target:** post-1.0
+**Verified:** 2026-10-23 — `RetryDelayContext` carries `AttemptNumber` only; no overload receives
+the outcome.
 
 **Why**
 
-Enable binding strategy options from `appsettings.json` so timeout durations, retry counts, and other parameters can be changed without recompiling. Requires #41 (dynamic reload) to be useful — without reload, config changes require app restart.
+`RetryDelay.Custom` receives `RetryDelayContext(AttemptNumber)`, so a delay cannot depend on what
+came back. That makes honouring a `Retry-After` header impossible, and `OnRetry` cannot help —
+it observes the attempt but cannot change the delay.
+
+This is the largest remaining functional gap against `Microsoft.Extensions.Http.Resilience`, and it
+bites by default: both libraries retry 429 out of the box, and Resilion does so on blind
+exponential backoff while the server is telling it exactly how long to wait.
+
+**Fix:** give the delay context the outcome — `RetryDelayContext<TResult>` carrying
+`Outcome<TResult>` alongside the attempt number. `Resilion.Http` can then map `Retry-After` to a
+delay without the core knowing anything about HTTP.
 
 ---
+
+### 64. Composable Event Handlers
+
+**Status:** Open
+**Type:** Improvement
+**Target:** unscheduled
+**Verified:** 2026-10-23 — `grep -n 'internal.*Invoke' src/Resilion/ResilienceEventHandler.cs`.
+
+**Why**
+
+`ResilienceEventHandler<TArgs>`'s invocation is internal, so an out-of-package strategy or handler
+can only *replace* a user's `OnRetry`, never wrap it. `Resilion.Http` wanted to hook retry for
+response disposal and could not, which is why it carries its own attempt tracker instead.
+
+Any future package wanting to observe a user-supplied callback hits the same wall.
+
+---
+
+### 65. Registry Factory with IServiceProvider
+
+**Status:** Open
+**Type:** Improvement
+**Target:** unscheduled
+**Verified:** 2026-10-23 — `ResiliencePipelineRegistry.RegisterPipeline` takes
+`Action<PipelineBuilder<TResult>>` with no provider.
+
+**Why**
+
+A pipeline built lazily by the registry cannot resolve services, because the factory signature
+carries no `IServiceProvider`. `Resilion.Http` works around it with a small accessor the handler
+factory fills immediately before resolving the pipeline — deterministic, but indirection that an
+`Action<PipelineBuilder<TResult>, IServiceProvider>` overload would delete outright.
+
+---
+
+### 66. Synchronous ExecuteOutcome
+
+**Status:** Open
+**Type:** Feature
+**Target:** unscheduled
+**Verified:** 2026-10-23 — `Pipeline<TResult>` exposes `ExecuteOutcomeAsync` but no sync equivalent.
+
+**Why**
+
+`ExecuteOutcomeAsync` is what lets a caller see the winning outcome without it being thrown, which
+is how `Resilion.Http` identifies the response to keep and disposes the rest. There is no
+synchronous counterpart, so `HttpClient.Send` cannot be supported without either leaking responses
+or behaving differently from the async path — it throws `NotSupportedException` instead.
+
+---
+
+### 4. Per-Call Delegate Allocation in Pipeline Chain
+
+**Status:** Open
+**Type:** Improvement
+**Target:** post-1.0
+**Verified:** 2026-10-23 — `benchmarks/results/Resilion.Benchmarks.HttpResilienceHandlerBenchmarks-report-github.md`,
+full run, not ShortRun.
+
+**Why**
+
+`StrategyComponent.ExecuteAsync` creates the closure `ctx => _next.ExecuteAsync(callback, ctx)` per
+execution, so an N-strategy pipeline allocates N closures per call.
+
+**This is now the largest measured gap against Polly**, which is why it has moved from "accepted
+tradeoff, revisit if profiling shows it matters" to a priority. `Resilion.Http` was the workload
+the earlier write-up predicted would surface it:
+
+| | Total alloc | Over a bare client | Gen0 per 10k ops |
+|---|---:|---:|---:|
+| Bare `HttpClient` | 960 B | — | 1.14 |
+| Polly standard handler | 1,224 B | **264 B** | 1.45 |
+| Resilion standard handler | 2,624 B | **1,664 B** | 3.13 |
+
+The headline "2.1× Polly" understates it. The marginal cost of the resilience layer — what the
+library actually adds — is **6.3×** Polly's. A faint Gen1 collection appears on Resilion's retry
+arm and none on Polly's.
+
+**The previous decision rule was broken. Do not use it.**
+
+It said: act if "Gen0 collections exceed 1 per 10,000 operations". Measured against a baseline,
+that threshold fires on a **bare `HttpClient` with no resilience library at all** (1.14), and on
+Polly (1.45). A criterion that condemns the control group measures nothing, and running the
+benchmark under it would have produced a guaranteed "yes, redesign" carrying no information.
+
+**Corrected decision rule — relative to a control, not absolute.** Pursue the pre-composed
+delegate chain only if, at ~1 ms simulated per-call latency:
+
+1. **Throughput:** Resilion's handler is **>= 3% slower** than Polly's on the same pipeline shape.
+   Today Resilion is *faster* at zero latency, so this asks whether allocation reverses that once
+   real work exists.
+2. **GC pressure:** Resilion's Gen0 rate exceeds the **bare-client baseline** by more than **2×**.
+   Today it is 2.7× (3.13 vs 1.14), so this would currently trigger — and meaningfully, because
+   the baseline is subtracted out.
+3. **Promotion:** any sustained Gen1 or Gen2 activity attributable to the pipeline. Per-call
+   closures should die in Gen0; promotion means something is surviving and is worth understanding
+   whatever the throughput numbers say.
+
+**Open question before writing the benchmark: should it be concurrent?** Every benchmark in this
+repo is single-threaded, and allocation pressure is a concurrent phenomenon — one thread allocating
+1.6 KB/ms is nothing, two hundred in-flight requests doing the same is ~320 MB/s. Single-threaded
+measurement may be the reason this item looked harmless for as long as it did.
+
+**Note on scope.** The fix "requires complex generic type threading and may not be feasible without
+sacrificing API simplicity" — in a library whose pitch is simplicity, that remains close to
+disqualifying. The realistic outcome may be to accept the cost with the numbers documented, rather
+than to redesign. Deciding that honestly still needs the benchmark above.
+
+---
+
+## P2 — Backlog
 
 ### 45. Telemetry Enrichment
 
+**Status:** Open
 **Type:** Feature
+**Target:** unscheduled
+**Depends on:** #56 (span coverage must be complete first)
+**Verified:** 2026-09-30 — `grep -n 'static readonly' src/Resilion/Telemetry/ResilionTelemetry.cs`
+→ `Meter`, `ActivitySource` and all six counters are static; no per-pipeline hook exists.
 
 **Why**
 
-Polly supports `MeteringEnricher` (custom tags on all telemetry events), `TelemetryListeners` (raw event listeners for custom consumers), and `SeverityProvider` (adjust/suppress event severity). Resilion's current telemetry is static counters only.
+Polly supports `MeteringEnricher` (custom tags on all telemetry events), `TelemetryListeners` (raw
+event listeners), and `SeverityProvider` (adjust/suppress severity). Resilion's telemetry is static
+counters only.
 
-**Fix:** Add extensibility points in `Resilion.Extensions` for custom meter tags and raw event subscription. Low priority unless enterprise users need it.
+**Design**
+
+Enrichment needs per-pipeline state, but the `Meter` and `ActivitySource` are static. The channel
+already exists: **`ResilienceContext`**, which every execute entry point already stamps with
+`PipelineName`. Add `internal ResilionTelemetryOptions? Telemetry` to the context (cleared in
+`Reset()`), a `public ResilionTelemetryOptions? TelemetryOptions` on `PipelineBuilderBase`, and thread
+it through `Build()` into the `Pipeline` constructor — **including the two
+`Name is not null ? … : Pipeline.Empty` early-return branches**, which otherwise silently drop the
+options for empty pipelines.
+
+Then replace every `counter.Add(…)` with an `internal static TelemetryEmitter.Emit(instrument, in resilienceEvent, context)`
+that resolves severity, returns early on `None` (suppression), emits, and invokes listeners.
+
+**Preserving the zero-cost path is mandatory.** When `context.Telemetry` is null or carries no
+enrichers, `Emit` must use the existing two-tag `counter.Add(1, tag1, tag2)` overload —
+byte-for-byte the current behaviour. Only with enrichers present does it build a `TagList` (a struct
+with inline storage for 8 tags, so even the enriched path stays allocation-free for typical tag
+counts). [telemetry.md](telemetry.md)'s "zero-cost when unused" claim must remain true, and a
+benchmark should prove it.
+
+**The plumbing goes in core, not `Resilion.Extensions`** (an earlier draft of this entry said
+otherwise). The emit sites are in core and core cannot depend on Extensions. Extensions adds only the
+`ILogger` bridge, which means re-adding the `Microsoft.Extensions.Logging.Abstractions` reference
+to `Resilion.Extensions`. It was removed before 1.0 rather than shipped dead: it had no
+references in any source file, so it made consumers restore a package for nothing and implied a
+logging integration that did not exist.
+
+**Be honest about severity:** core has no logger, so severity is only meaningful for suppression via
+`None` and for user listeners. Say that rather than implying log-level integration.
+
+**Hard prerequisite:** ship #56 first. Enrichment layered on top of partial span coverage gives users
+enrichment that silently doesn't apply on typed pipelines — worse than no enrichment.
+
+**Effort:** High. This is the most invasive item in the backlog: every emit site in every strategy.
+
+---
+
+
+### 67. Registry Caches a Failed Pipeline Build Until Invalidated
+
+**Status:** Open
+**Type:** Improvement
+**Target:** unscheduled
+**Verified:** 2026-10-23 — a probe registering a factory that throws on its first two builds, then
+resolving five times with invalidations in between. Builds 1–3 all rethrew *the same* exception
+instance from build 1 (`builds` counter stayed at 1); only `InvalidatePipeline` re-ran the factory.
+
+**Why**
+
+`ResiliencePipelineRegistry.GetPipeline` caches each pipeline in a `Lazy<Pipeline>` built with the
+default `LazyThreadSafetyMode.ExecutionAndPublication`, which **caches the exception** when the
+factory throws. So a `configure` delegate that fails — bad values from a reload, a dependency that
+was not ready at first resolve — leaves that key permanently broken: every later `GetPipeline`
+rethrows the stored exception without re-running the factory.
+
+The lookup guard above the `Lazy` only covers an *unknown key*; it does nothing for a factory that
+throws.
+
+With reload wired up this self-heals, because the next options change invalidates the key. Without
+it, the key is broken for the process lifetime. The failure is also confusing to diagnose: the
+exception's stack trace points at the first resolve, which may be long past.
+
+**Current mitigation:** documented in [dynamic-reload.md](dynamic-reload.md), and
+`InvalidatePipeline` returns `true` for a cached failure, so a caller can clear one deliberately.
+
+**Possible fixes**
+
+1. **Do not cache the failure** — catch inside the `Lazy` factory, remove the entry from
+   `_pipelines`, rethrow. The next resolve then retries. Risk: a factory that always throws is now
+   re-run on every call, which under load turns one cached exception into a hot loop of failing
+   builds.
+2. **`LazyThreadSafetyMode.PublicationOnly`**, which does not cache exceptions. Same retry-storm
+   risk, and it permits concurrent factory execution, so two callers could build two pipelines and
+   one gets discarded — unacceptable while a pipeline may own a circuit breaker.
+3. **Keep the caching, add a documented escape hatch.** Current state, plus the `InvalidatePipeline`
+   route above.
+
+(1) with a short backoff is the only one that improves on today without a new hazard, and it is not
+obviously worth the machinery. Decide only if someone hits it.
+
+### 40. Resilion.Chaos — Chaos Engineering
+
+**Status:** Open
+**Type:** Feature
+**Target:** unscheduled
+**Verified:** 2026-09-30 — no `src/Resilion.Chaos` directory; `grep -n 'Chaos' src/Resilion/Internal/StrategyType.cs`
+→ 0 hits.
+
+**Why**
+
+Polly v8.3+ includes Simmy for chaos engineering — fault, outcome, latency and behavior injection.
+Table stakes for production resilience testing, and the biggest real feature gap after
+`Resilion.Http`.
+
+**Design**
+
+New package `Resilion.Chaos` with four strategies: `AddChaosFault`, `AddChaosOutcome`,
+`AddChaosLatency`, `AddChaosBehavior`. Shared options on a public abstract record base:
+`InjectionRate`, `InjectionRateGenerator`, `Enabled`, `EnabledGenerator` — **generators take
+precedence over static values**, resolved in one shared internal helper so the four strategies cannot
+diverge. Zero `PackageReference`s (one `ProjectReference` to `Resilion`), preserving the
+zero-dependency story.
+
+**`Randomizer` (`Func<double>?`) is not optional polish.** Without it, chaos strategies are as
+untestable as a strategy that ignores `builder.TimeProvider` — it is the injection-decision analogue
+of the time seam. Tests set `() => 0.0` (always inject) or `() => 1.0` (never). Document it as the
+supported test seam.
+
+**Needs `InternalsVisibleTo`** for three things: `Internal.StrategyType.Chaos` (for the tagging
+`AddStrategy` overloads), a new internal chaos counter, and `ResilienceEventHandler<T>.Invoke` (to run
+the behavior payload). Same pattern as `Resilion.RateLimiting`.
+
+**Chaos must be innermost, and the validator should say so.** Chaos outside Retry means retry never
+sees the injected fault, so the chaos run *silently tests nothing*. Add `Chaos` to `StrategyType`
+(**appended**, to keep existing ordinals stable) and one **warning** in `OrderingValidator` when a
+chaos strategy is not in the innermost block. Warning rather than error, because stacking several
+chaos strategies innermost is legitimate and a deliberate mid-pipeline injection is conceivable.
+
+Other mechanics worth recording up front: `AddChaosOutcome` is **typed-only** on purpose, because a
+typed strategy added to an untyped pipeline is silently skipped by `TypedStrategyComponent<T>`;
+`ChaosLatencyStrategy` must take `builder.TimeProvider`; all four must override the sync `Execute`
+with real implementations rather than inheriting the base that throws under a
+`SynchronizationContext`; and `FaultGenerator` should be documented as preferable to a static `Fault`,
+because `Outcome<T>.FromException` captures with `ExceptionDispatchInfo` and rethrowing one instance
+repeatedly accumulates stack traces.
+
+**Production safety:** with defaults of `Enabled = true` and a non-zero `InjectionRate`, lead the docs
+with `EnabledGenerator = _ => !env.IsProduction()`.
+
+**Release note:** as with #39, `release-nuget.yml`'s hardcoded package count must be data-driven
+first.
+
+**Effort:** High.
+
+---
+
+### 11. Hedging: O(N²) `Task.WhenAny` Continuation Registration
+
+**Status:** Open
+**Type:** Improvement
+**Target:** unscheduled
+**Depends on:** #54 (the clean fix is net9.0+ only)
+**Verified:** 2026-09-30 — `grep -n 'Task.WhenAny\|Task.WhenEach' src/Resilion/Hedging/HedgingStrategy.cs`
+→ `WhenAny` at `:69`, `:70`, `:143`, `:333`; no `WhenEach`.
+
+**Why**
+
+This entry was previously titled "memory leak". **That overstates it.** `WaitForBestOutcome`
+(`:322-347`) calls `Task.WhenAny(remaining)` once per iteration, so it registers O(N²) continuations
+where N = `MaxHedgedAttempts`, and continuations from earlier iterations attached to still-pending
+tasks are never deregistered. But N is a small user-chosen constant (typically 2–3), the cleanup in
+`finally` awaits all tasks, and it only "leaks" if an attempt never completes — in which case the
+attempt's own `Task` is already leaked and the continuation is the least of the problem.
+
+**Fix**
+
+`Task.WhenEach` is the clean answer, and it is **net9.0+ only** — hence the dependency on #54's
+multi-targeting decision.
+
+**Do not hand-roll a net8-compatible equivalent.** A `ContinueWith` + `SemaphoreSlim` +
+`ConcurrentQueue` implementation trades a bounded O(N²) continuation registration for *more*
+allocations at the N this code actually runs at. Net negative. That analysis is recorded here so the
+next reader doesn't redo it.
+
+**Do not "simplify" the other `WhenAny` sites.** `:69-70` is the hedging-delay race and is correct as
+written — the comment at `:74-77` explains why it deliberately awaits the stored task rather than
+calling `WhenAny` twice. `:143` is the cleanup timeout.
+
+**Effort:** Medium, and gated.
+
+---
+
+### 5. CancellationTokenSource Pooling for Timeout
+
+**Status:** Open
+**Type:** Improvement
+**Target:** unscheduled
+**Verified:** 2026-09-30 — `grep -n 'CreateLinkedTokenSource\|CreateTimer' src/Resilion/Timeout/TimeoutStrategy.cs`
+→ CTS at `:41`, timer at `:48-63`, one of each per execution.
+
+**Why**
+
+The Timeout strategy allocates one `CancellationTokenSource` per execution.
+`CancellationTokenSource.TryReset()` (since .NET 6) enables pooling — reset and reuse instead of
+allocating.
+
+**The missing measurement**
+
+There is no isolated timeout benchmark at all. Add a `TimeoutAllocationBenchmarks` with (a) `AddTimeout`
+alone on the happy path where the timeout never fires, and (b) the same where it **does** fire — the
+case where `TryReset()` returns `false` and pooling yields nothing.
+
+**Decision rule:** implement pooling only if the CTS + `ITimer` pair is **> 25%** of total bytes/op for
+a timeout-only pipeline **and** pooling removes **>= 20%** of bytes/op with no wall-clock regression.
+
+**The ceiling is lower than this issue implies.** `_timeProvider.CreateTimer(…)` also allocates an
+`ITimer` per execution, so pooling only the CTS caps the upside at roughly half. The larger lever —
+`CancellationTokenSource.CancelAfter`, which rides the shared timer queue instead of allocating —
+**breaks `FakeTimeProvider` testability**, and `builder.TimeProvider` is the repo's single
+time-injection seam. That is a hard no. So if this is done at all it must pool the **pair** behind one
+policy, which is materially more complex than a "Medium" estimate and carries the `TryReset()`
+timer-state edge cases noted below.
+
+Note that #46 *adds* one small allocation to this path, so re-baseline before measuring.
+
+**Complexity:** Medium-to-high. `TryReset()` has edge cases around timer state and concurrent
+cancellation.
+
+**Effort:** Medium.
+
+---
+
+## P3 — Blocked / needs external change
+
+### 48. Benchmark CI on PRs
+
+**Status:** Open
+**Type:** Infrastructure
+**Target:** unscheduled
+**Verified:** 2026-09-30 — `ls .github/workflows/` → `ci.yml`, `release-nuget.yml`, `test.yml`; no
+benchmark workflow.
+
+**Why**
+
+[benchmarks/results/README.md](../benchmarks/results/README.md) is only updated when someone manually
+runs the suite and commits the numbers. Nothing catches a PR that regresses performance between those
+runs.
+
+**Design — the constraint determines everything.** GitHub-hosted runners are far too noisy, and
+differ from whoever committed the current numbers, for a committed-baseline comparison to mean
+anything. **So compare PR-vs-merge-base within the same job on the same runner:** check out the
+merge-base, run the suite, check out the PR head, run the same suite, diff. Two benchmark runs per PR
+(~+10–20 min with `--job short`). A cross-machine comparison against committed numbers will produce
+false alarms until people stop reading the output.
+
+Compare with a `jq` step over the two `*-report-full.json` files — no extra tooling. Flag a benchmark
+when `Statistics.Mean` regressed **> 10%** **and** the PR mean falls outside the base run's
+`[Mean − 2·StandardError, Mean + 2·StandardError]`; or when `BytesAllocatedPerOperation` increased **at
+all** for a benchmark currently at 0 B, or **> 15%** otherwise.
+
+**Rollout:** `continue-on-error: true` plus a sticky PR comment. **Do not fail the build initially.** A
+benchmark job that fails spuriously gets ignored, then disabled, then deleted — worse than not having
+it. Start with `workflow_dispatch` plus nightly-against-master (cheap, catches drift, zero PR latency)
+and add the `pull_request` trigger only once the suite has proven stable.
+
+**Honest priority:** the lowest-value item in this file for a library at 1.0 with no users yet, and two
+benchmark runs per PR is a real recurring cost.
+
+**Effort:** Low.
 
 ---
 
 ### 47. CI Code Coverage Collection
 
+**Status:** Blocked
 **Type:** Infrastructure
+**Target:** unscheduled
+**Verified:** 2026-09-30 — `grep -n 'coverlet\|CodeCoverage' tests/Directory.Build.props`
+→ `coverlet.collector 10.0.1` only.
 
 **Why**
 
-The test projects target `Microsoft.Testing.Platform` (MTP) via `xunit.v3`, not classic VSTest. `coverlet.collector` — currently referenced in `tests/Directory.Build.props` — is a VSTest data collector, so `dotnet test --collect:"XPlat Code Coverage"` is silently ignored under MTP: verified locally, it produces zero output and no error. The MTP-native replacement, `Microsoft.Testing.Extensions.CodeCoverage`, does work in isolation (`dotnet test <project> -- --coverage --coverage-output-format cobertura` produces a real `.cobertura.xml`) — but adding it as a shared package reference (`tests/Directory.Build.props`) broke `dotnet build`/`dotnet restore` entirely on this machine's installed SDK (10.0.100, resolved via `global.json`'s `rollForward: latestMajor`) with `NETSDK1013: The TargetFramework value '' was not recognized` — reproduced twice, and confirmed the package is the cause by reverting it and rebuilding successfully. This looks like a version incompatibility between `Microsoft.Testing.Extensions.CodeCoverage` 17.14.2 and the newest installed SDK, not a problem with the approach itself.
+The test projects target `Microsoft.Testing.Platform` (MTP) via `xunit.v3`, not classic VSTest.
+`coverlet.collector` — currently referenced in `tests/Directory.Build.props` — is a VSTest data
+collector, so `dotnet test --collect:"XPlat Code Coverage"` is silently ignored under MTP: verified
+locally, it produces zero output and no error. The MTP-native replacement,
+`Microsoft.Testing.Extensions.CodeCoverage`, does work in isolation
+(`dotnet test <project> -- --coverage --coverage-output-format cobertura` produces a real
+`.cobertura.xml`) — but adding it as a shared package reference in `tests/Directory.Build.props` broke
+`dotnet build`/`dotnet restore` entirely on this machine's installed SDK (10.0.100, resolved via
+`global.json`'s `rollForward: latestMajor`) with
+`NETSDK1013: The TargetFramework value '' was not recognized` — **reproduced twice**, and confirmed the
+package is the cause by reverting it and rebuilding successfully. This looks like a version
+incompatibility between `Microsoft.Testing.Extensions.CodeCoverage` 17.14.2 and the newest installed
+SDK, not a problem with the approach.
 
-**Fix**
+**Fix — try the tool-based route first; it has no project-file blast radius at all:**
 
-Retry with a newer `Microsoft.Testing.Extensions.CodeCoverage` version once one compatible with the SDK(s) this repo actually builds against is confirmed (test in isolation on a throwaway branch before merging into the shared `Directory.Build.props`, since a bad version breaks every project that imports it, not just the one being tested). `coverlet.collector` can then be removed as dead weight. Once collection works, wire `--coverage` into `.github/workflows/test.yml`, upload the `.cobertura.xml` as a build artifact, and only then consider a coverage badge — a badge without a live report behind it is an unverified claim.
+```bash
+dotnet tool install -g dotnet-coverage
+dotnet-coverage collect --output-format cobertura --output coverage.cobertura.xml "dotnet test -c Release"
+```
 
-**Decision:** Left `coverlet.collector` in place for now (harmless no-op under MTP, at least doesn't break the build) rather than leave the tree in the broken state discovered above.
+`dotnet-coverage` attaches to the test host process and is agnostic to VSTest vs MTP. If this produces
+a non-empty report, this item is solved without touching a single project file.
 
----
+**If the package route is still needed, test it in isolation:**
 
-### 48. Benchmark CI on PRs
+1. Throwaway branch, never merged as-is.
+2. **Do not edit `tests/Directory.Build.props`.** Add the reference to exactly one project file, so a
+   bad version cannot break the other project's restore. **This is the specific mistake that produced
+   the previous failure.**
+3. `dotnet package search Microsoft.Testing.Extensions.CodeCoverage --take 20`. **Pin an exact
+   version**; never a floating range.
+4. **Remove the SDK variable from the experiment.** Test each supported SDK explicitly, without
+   editing the shared `global.json` — run with `DOTNET_ROLL_FORWARD=disable` against an explicitly
+   installed 8.0.404, then 9.0.x, then the newest installed, confirming `dotnet --version` each time.
+5. **Success criteria, all four, on all three SDKs:** restore succeeds; `dotnet build -c Release`
+   succeeds; the coverage run emits a `.cobertura.xml` with **`line-rate > 0`** — not merely a
+   non-empty file, since the coverlet no-op produced no error either; and a whole-solution build still
+   succeeds.
+6. Only then move the reference into `tests/Directory.Build.props`, remove `coverlet.collector` as dead
+   weight, and add a `coverage` job to `test.yml` uploading the report as an artifact. **No badge until
+   a published report exists** — a badge without a live report behind it is an unverified claim.
+7. **If it fails again**, append the exact version, SDK and error here rather than leaving a generic
+   "blocked", so the next attempt doesn't repeat a known-bad combination.
 
-**Type:** Infrastructure
+**Decision:** `coverlet.collector` stays in place for now — a harmless no-op under MTP that at least
+doesn't break the build.
 
-**Why**
+**Unrelated cleanup to fold in:** `Microsoft.Extensions.TimeProvider.Testing` is **8.0.0** in
+`tests/Resilion.Tests` and **9.0.0** in `tests/Resilion.Extensions.Tests`. Standardize on 9.0.0 in
+`tests/Directory.Build.props` and drop both per-project references.
 
-`benchmarks/results/README.md` currently only gets updated by someone manually running the suite and committing the numbers. Nothing catches a PR that accidentally regresses performance between those manual runs.
-
-**Design**
-
-A GitHub Actions workflow that runs `dotnet run -c Release --project benchmarks/Resilion.Benchmarks -- --job short` on PRs touching `src/` or `benchmarks/`, and compares the result against a committed baseline (fail or comment on a regression past some threshold). Not critical for v1.0, but valuable for ongoing development once the library has enough usage that regressions would actually be noticed by users first.
-
----
-
-### 53. No SECURITY.md
-
-**Type:** Documentation
-
-**Why**
-
-No vulnerability disclosure policy exists (confirmed: `SECURITY.md` not found in repo root). This is a standard, low-effort expectation for OSS infrastructure libraries — it tells users how to privately report security issues instead of disclosing them publicly on GitHub.
-
-**Fix**
-
-Add a `SECURITY.md` in the repository root documenting:
-- **Supported versions:** Which versions of Resilion receive security updates (typically N and N-1).
-- **Reporting:** Link to GitHub's private security advisory feature (Settings → Security & Analysis → Private vulnerability reporting). Include a brief note that security reports should be filed there instead of public issues.
-- **Response SLA:** Expected timeline for acknowledgement and patch release (e.g., "critical issues patched within 7 days").
-
-This is boilerplate text; most large OSS projects have near-identical policies. Low effort, high trust signal.
-
-**Effort:** Low. One short document.
-
----
-
-### 54. Evaluate Multi-Targeting net9.0 for System.Threading.Lock
-
-**Type:** Improvement — Performance
-
-**Why**
-
-`src/Directory.Build.props` targets `net8.0` only (confirmed). .NET 9 introduced `System.Threading.Lock`, a purpose-built synchronization primitive faster than `lock(object)` under contention, especially in hot-path code with many concurrent waiters.
-
-`CircuitBreakerStateMachine` and `SlidingWindow` both hold a lock on every call while in the Closed state — the most common state in healthy systems. If benchmarks show `System.Threading.Lock` provides a measurable win in that scenario, multi-targeting is justified.
-
-**Fix**
-
-1. **Benchmark first:** Run the existing circuit-breaker-under-load benchmarks with both `lock(object)` and `System.Threading.Lock` implementations in isolation. Only proceed if the new lock type shows >5% wall-clock improvement under the standard load profile.
-
-2. **If justified:** Multi-target `net8.0;net9.0` in `src/Directory.Build.props`. Add conditional compilation in `CircuitBreakerStateMachine.cs` and `SlidingWindow.cs`:
-   ```csharp
-   #if NET9_0_OR_GREATER
-   private System.Threading.Lock _lock = new();
-   #else
-   private readonly object _lock = new();
-   #endif
-   ```
-   Both APIs are compatible with the same lock syntax; only the initialization changes.
-
-3. **Don't multi-target speculatively.** The cost is a more complex build matrix and CI test surface. Only add net9.0 if the benchmark proves it matters.
-
-**Effort:** Medium. Primarily benchmarking time. The conditional code change is trivial.
+**Effort:** Medium, mostly experimentation.
 
 ---
 
-See also: [tradeoffs.md](tradeoffs.md) — accepted design imperfections with reasoning for why they won't be fixed.
+## Retired items
+
+Numbers that have left the active list. **Never reuse a number.**
+
+| # | Title | Disposition |
+|---|-------|-------------|
+| 49 | Telemetry counters carry no dimensions/tags | Implemented — see CHANGELOG `[1.0.0-pre]`. Residual gap filed as #55. |
+| 50 | ActivitySource declared but never used | Partially implemented — untyped async+sync paths only, see CHANGELOG `[1.0.0-pre]`. Residual gap filed as #56. |
+| 51 | No public API surface tracking | Package wired up only; the files were not in analyzer format and nothing enforced the rules. See CHANGELOG `[1.0.0-pre]`. Actual enforcement filed as #57. |
+| 46 | Timeout cancellation TOCTOU race | Fixed — atomic first-cause recording. See CHANGELOG `[Unreleased]`. |
+| 52 | No SourceLink, symbol packages, or deterministic builds | Done — SourceLink, .snupkg and deterministic CI builds. See CHANGELOG `[Unreleased]`. |
+| 53 | No SECURITY.md | Done — `SECURITY.md` added. Requires Private Vulnerability Reporting to stay enabled. |
+| 55 | Hedging sync path never increments hedging.attempts | Fixed. See CHANGELOG `[Unreleased]`. |
+| 56 | Typed strategies emit no ActivitySource spans | Fixed — spans extracted to `StrategyActivity` and applied to all entry points. |
+| 57 | PublicAPI files not in analyzer format; no CI enforcement | Fixed — files regenerated, RS0016/RS0017 are errors in CI. |
+| 58 | telemetry.md documents span tags that don't exist | Fixed — documented tag set now matches the code. |
+| 59 | Hedging drops PipelineName on per-attempt contexts | Fixed. See CHANGELOG `[Unreleased]`. |
+| 60 | Typed-strategy result mismatch silently skips the strategy | Fixed — now throws `InvalidOperationException`. |
+| 44 | `IConfiguration` binding for strategy options | Done — five bindable DTOs in `Resilion.Extensions.Configuration`. See CHANGELOG `[Unreleased]` and [configuration.md](configuration.md). |
+| 61 | README's synchronous-execution claims are broader than the truth | Fixed — claim scoped, four exceptions documented. |
+| 39 | Resilion.Http — HttpClient integration | Implemented. See CHANGELOG `[Unreleased]`. Residual gaps filed as #63–#66. |
+| 10 | Resilion.Testing package | Deferred; the two core gaps behind it (`CircuitBreakerStateProvider`, public `Pipeline.Name`) shipped instead. See CHANGELOG `[Unreleased]`. |
+| 12 | Hedging: HedgingDelayGenerator | Implemented. See CHANGELOG `[Unreleased]`. |
+| 41 | Pipeline dynamic reload via IOptionsMonitor | Implemented. See CHANGELOG `[Unreleased]`. |
+| 42 | Keyed services support | Implemented — always on, with idempotent `Pipeline.Dispose` as its prerequisite. |
+| 43 | PredicateBuilder<T> fluent API | Implemented — generic and non-generic. See CHANGELOG `[Unreleased]`. |
+
+---
+
+See also: [tradeoffs.md](tradeoffs.md) — accepted design imperfections with reasoning for why they
+won't be fixed, and [verification.md](verification.md) — the commands that back every factual claim in
+this file.
