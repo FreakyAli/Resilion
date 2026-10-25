@@ -23,15 +23,19 @@ dotnet build
 ```text
 src/
     Resilion/                   Core library (zero dependencies)
-    Resilion.Extensions/        DI, logging, telemetry integration
+    Resilion.Extensions/        DI, pipeline registry, reload, configuration binding
     Resilion.RateLimiting/      Rate limiting strategy
+    Resilion.Http/              HttpClient / IHttpClientFactory handlers
+    Resilion.Chaos/             Fault, outcome, latency and behavior injection
 
 tests/
     Resilion.Tests/             Core strategy and pipeline tests
-    Resilion.Extensions.Tests/  DI and telemetry tests
+    Resilion.Extensions.Tests/  DI, reload and configuration tests
+    Resilion.Http.Tests/        HttpClient handler tests
+    Resilion.Chaos.Tests/       Chaos strategy tests
 
 benchmarks/
-    Resilion.Benchmarks/        Performance benchmarks (not in .sln)
+    Resilion.Benchmarks/        Performance benchmarks (in the .sln, not run by dotnet test)
 
 samples/
     Resilion.Samples/           Usage examples

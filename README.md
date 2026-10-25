@@ -89,7 +89,8 @@ var result = await pipeline.ExecuteAsync(async (state, ct) =>
 ```
 
 ### Outcome-Based Resilience
-No `PredicateBuilder` or `PredicateResult` chains. Just `Func<Outcome<T>, bool>`:
+A predicate is just `Func<Outcome<T>, bool>` — no `PredicateResult` chain to learn. `PredicateBuilder<T>`
+exists if you prefer composing clauses, but nothing requires it:
 
 ```csharp
 var pipeline = Pipeline.Create<HttpResponseMessage>(b => b.AddRetry(

@@ -212,6 +212,23 @@ _No changes yet._
   must not be lifted into production code
 
 ### Fixed
+- **`CloneRequest` handed retry callbacks a disposed request.** The per-attempt clone is disposed
+  as soon as the attempt returns, but strategy callbacks run after that — so `OnRetry` calling
+  `context.GetRequestMessage()` got a disposed message and threw on touching its content. The
+  context now points back at the caller's live request before the clone is disposed
+- **The HTTP replay mode was re-resolved on every handler rotation.** Working it out re-runs the
+  caller's `configure` delegate, and `IHttpClientFactory` rebuilds the handler chain roughly every
+  two minutes, so the delegate ran for the life of the application and took any side effect in it
+  along. Resolved once now
+- **Hedging spans could end with no `outcome` tag.** The two early returns taken when an attempt
+  succeeds before the launch loop finishes skipped `SetOutcome`, so a successful hedged call
+  produced a span that was present in the trace but silent about what happened
+- **A reloadable pipeline rebuilt on changes to unrelated named options.**
+  `IOptionsMonitor.OnChange` fires for every named instance of the options type, and the
+  subscription ignored which one changed — so a pipeline bound to `"billing"` rebuilt whenever
+  `"api"` changed
+- `RegistryDispose_DisposesReloadSubscriptions` asserted nothing about disposal and passed with
+  the feature removed. It now uses a monitor that records whether its subscription was disposed
 
 - **Timeout cancellation classification is now race-free.** `WasCancelledByTimeout` read
   `linkedCts.IsCancellationRequested && !userToken.IsCancellationRequested` as two separate reads,

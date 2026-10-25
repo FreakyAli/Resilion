@@ -281,6 +281,14 @@ public static class ResilionHttpClientBuilderExtensions
         bool sequentialAttempts,
         Func<IServiceProvider, HttpRequestReplay> resolveReplay)
     {
+        // Resolved once, not per handler. Working out the replay mode means running the caller's
+        // configure delegate again, and IHttpClientFactory rebuilds the handler chain roughly
+        // every two minutes — so without this the delegate runs for the lifetime of the app, and
+        // any side effect in it runs with it. Lazy's default mode is publication-safe, so
+        // concurrent first resolutions agree on one value.
+        var replay = new Lazy<HttpRequestReplay>(
+            () => resolveReplay(AccessorServices(accessor, pipelineKey)));
+
         builder.AddHttpMessageHandler(sp =>
         {
             // Assigned immediately before GetPipeline, which is the only call that can trigger the
@@ -290,7 +298,7 @@ public static class ResilionHttpClientBuilderExtensions
             var pipeline = sp.GetRequiredService<IPipelineProvider<string>>()
                 .GetPipeline<HttpResponseMessage>(pipelineKey);
 
-            return new ResilienceHandler(pipeline, resolveReplay(accessor.Services), sequentialAttempts);
+            return new ResilienceHandler(pipeline, replay.Value, sequentialAttempts);
         });
 
         return builder;

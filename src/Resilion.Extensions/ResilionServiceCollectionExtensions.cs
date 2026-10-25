@@ -357,7 +357,17 @@ internal sealed class MonitoredPipelineConfigurator<TOptions> : IPipelineConfigu
 
         // IOptionsMonitor<T>.OnChange is declared as returning IDisposable?, and a custom monitor
         // implementation may legitimately return null. The registry owns whatever we get.
-        var subscription = monitor.OnChange((_, _) => registry.InvalidatePipeline(_name));
+        //
+        // Filter on the changed name: OnChange fires for every named instance of TOptions, so a
+        // pipeline bound to "billing" would otherwise rebuild whenever "api" changed. The monitor
+        // reports the default instance as null.
+        var subscription = monitor.OnChange((_, changedName) =>
+        {
+            if (Matches(changedName))
+            {
+                registry.InvalidatePipeline(_name);
+            }
+        });
         if (subscription is not null)
         {
             registry.AddReloadSubscription(subscription);
@@ -366,6 +376,17 @@ internal sealed class MonitoredPipelineConfigurator<TOptions> : IPipelineConfigu
 
     private TOptions CurrentValue(IOptionsMonitor<TOptions> monitor)
         => _optionsName is null ? monitor.CurrentValue : monitor.Get(_optionsName);
+
+    /// <summary>
+    /// Whether a change notification for <paramref name="changedName"/> concerns this pipeline's
+    /// options instance. <see cref="IOptionsMonitor{TOptions}"/> reports the default instance as
+    /// <see langword="null"/>.
+    /// </summary>
+    private bool Matches(string? changedName)
+        => string.Equals(
+            changedName ?? Options.DefaultName,
+            _optionsName ?? Options.DefaultName,
+            StringComparison.Ordinal);
 }
 
 /// <summary>The typed counterpart of <see cref="MonitoredPipelineConfigurator{TOptions}"/>.</summary>
@@ -392,7 +413,14 @@ internal sealed class MonitoredTypedPipelineConfigurator<TResult, TOptions> : IP
 
         registry.RegisterPipeline<TResult>(_name, builder => _configure(builder, CurrentValue(monitor)));
 
-        var subscription = monitor.OnChange((_, _) => registry.InvalidatePipeline<TResult>(_name));
+        // See MonitoredPipelineConfigurator for why the changed name is filtered.
+        var subscription = monitor.OnChange((_, changedName) =>
+        {
+            if (Matches(changedName))
+            {
+                registry.InvalidatePipeline<TResult>(_name);
+            }
+        });
         if (subscription is not null)
         {
             registry.AddReloadSubscription(subscription);
@@ -401,6 +429,17 @@ internal sealed class MonitoredTypedPipelineConfigurator<TResult, TOptions> : IP
 
     private TOptions CurrentValue(IOptionsMonitor<TOptions> monitor)
         => _optionsName is null ? monitor.CurrentValue : monitor.Get(_optionsName);
+
+    /// <summary>
+    /// Whether a change notification for <paramref name="changedName"/> concerns this pipeline's
+    /// options instance. <see cref="IOptionsMonitor{TOptions}"/> reports the default instance as
+    /// <see langword="null"/>.
+    /// </summary>
+    private bool Matches(string? changedName)
+        => string.Equals(
+            changedName ?? Options.DefaultName,
+            _optionsName ?? Options.DefaultName,
+            StringComparison.Ordinal);
 }
 
 internal sealed class PipelineConfigurator : IPipelineConfigurator

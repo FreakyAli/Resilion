@@ -37,12 +37,16 @@ chain — see [future-plans.md](../../docs/future-plans.md) item #4 and
 The composite figure moved from 393 ns / 976 B in the previous run. Two things changed, and it is
 worth separating them:
 
-- **976 B → 1120 B is a real regression, and deliberate.** The Timeout strategy now records which
-  cause cancelled its linked token first, so user cancellation can no longer be misclassified as a
-  timeout under a race. That costs 32 B per timeout, plus a `CancellationToken` registration when
-  the token reaching that timeout can be cancelled. The outer timeout replaces the context token
-  with a cancellable one, so the **inner** timeout pays the registration too — hence 144 B on this
-  two-timeout shape rather than 64 B. Measured in isolation: timeout-only went 360 B → 392 B.
+- **976 B → 1120 B is a real regression, and deliberate.** The composite total is measured; the
+  breakdown that follows is **attribution**, not a separate measurement, and no benchmark report
+  in this directory isolates it. The Timeout strategy now records which cause cancelled its linked
+  token first, so user cancellation can no longer be misclassified as a timeout under a race. That
+  is attributed as 32 B per timeout plus a `CancellationToken` registration when the token
+  reaching that timeout can be cancelled; the outer timeout replaces the context token with a
+  cancellable one, so the **inner** timeout is taken to pay the registration too, accounting for
+  144 B on this two-timeout shape rather than 64 B. The 360 B → 392 B timeout-only figure comes
+  from an ad-hoc run that was not committed — treat it as indicative until a
+  `TimeoutAllocationBenchmarks` exists (future-plans #5).
 - **393 ns → 476 ns is mostly not that change.** Re-measuring the unmodified code on this machine
   today gives 431 ns, not 393 ns, so roughly half the apparent slowdown is run-to-run drift in the
   `ShortRun` configuration rather than the fix. Treat cross-run wall-clock deltas under `ShortRun`
@@ -55,8 +59,9 @@ through a real `IHttpClientFactory` graph with an in-memory primary handler, so 
 touched and what remains is pipeline plus per-request bookkeeping.
 
 Unlike the other tables on this page, this one is a **full run**, not `ShortRun` — at three
-iterations the error bars were ±25% and could not separate the two libraries at all. These are
-±0.4%.
+iterations the error bars were ±25% and could not separate the two libraries at all. Here the
+relative error ranges from **0.37% to 1.50%** per row (widest on Polly's retry arm), which is what
+makes the differences below separable at all.
 
 | Benchmark | Mean | Allocated |
 |-----------|-----:|----------:|

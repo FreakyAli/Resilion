@@ -176,6 +176,11 @@ internal sealed class ResilienceHandler : DelegatingHandler
         {
             if (!ReferenceEquals(message, state.Request))
             {
+                // Point the context back at the caller's live request BEFORE disposing the clone.
+                // Strategy callbacks run after this returns — OnRetry fires between attempts — and
+                // GetRequestMessage() would otherwise hand them a disposed message.
+                context.Properties.Set(HttpResilienceKeys.RequestMessage, state.Request);
+
                 // Disposes the clone and its ByteArrayContent; the shared body array is untouched.
                 message.Dispose();
             }

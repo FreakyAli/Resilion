@@ -298,8 +298,67 @@ public class PipelineReloadTests
         Assert.Equal(8, attempts); // 1 initial + 7 retries
     }
 
+    /// <summary>
+    /// A monitor whose change subscription reports whether it was disposed.
+    /// </summary>
+    private sealed class RecordingOptionsMonitor : IOptionsMonitor<RetryOptions>
+    {
+        private readonly List<Action<RetryOptions, string?>> _listeners = [];
+
+        internal bool SubscriptionDisposed { get; private set; }
+
+        public RetryOptions CurrentValue { get; } = new();
+
+        public RetryOptions Get(string? name) => CurrentValue;
+
+        public IDisposable OnChange(Action<RetryOptions, string?> listener)
+        {
+            _listeners.Add(listener);
+            return new Subscription(this);
+        }
+
+        internal void Notify(string? name)
+        {
+            foreach (var listener in _listeners.ToArray())
+            {
+                listener(CurrentValue, name);
+            }
+        }
+
+        private sealed class Subscription : IDisposable
+        {
+            private readonly RecordingOptionsMonitor _owner;
+
+            internal Subscription(RecordingOptionsMonitor owner) => _owner = owner;
+
+            public void Dispose() => _owner.SubscriptionDisposed = true;
+        }
+    }
+
     [Fact]
     public void RegistryDispose_DisposesReloadSubscriptions()
+    {
+        // Asserting the subscription is actually disposed, not merely that teardown doesn't throw:
+        // the previous version of this test passed with AddReloadSubscription deleted entirely.
+        var monitor = new RecordingOptionsMonitor();
+        var services = new ServiceCollection();
+        services.AddSingleton<IOptionsMonitor<RetryOptions>>(monitor);
+        services.AddResiliencePipeline<RetryOptions>("api", (b, o) => b.AddRetry(
+            new RetryStrategyOptions { MaxRetryAttempts = o.MaxRetryAttempts }));
+
+        using var provider = services.BuildServiceProvider();
+        var registry = provider.GetRequiredService<ResiliencePipelineRegistry<string>>();
+        _ = registry.GetPipeline("api");
+
+        Assert.False(monitor.SubscriptionDisposed);
+
+        registry.Dispose();
+
+        Assert.True(monitor.SubscriptionDisposed);
+    }
+
+    [Fact]
+    public void RegistryDispose_ThenOptionsChange_DoesNotThrow()
     {
         var (provider, config) = BuildProvider(s =>
             s.AddResiliencePipeline<RetryOptions>("api", (b, o) => b.AddRetry(
@@ -313,6 +372,37 @@ public class PipelineReloadTests
         // A change arriving after teardown must not throw out of the notification callback.
         SetAttempts(config, "5");
         provider.Dispose();
+    }
+
+    [Fact]
+    public void OptionsChange_ForADifferentNamedInstance_DoesNotInvalidate()
+    {
+        // OnChange fires for every named instance of TOptions, so without filtering on the
+        // changed name a pipeline bound to "fast" rebuilds whenever any other name changes.
+        var monitor = new RecordingOptionsMonitor();
+        var builds = 0;
+
+        var services = new ServiceCollection();
+        services.AddSingleton<IOptionsMonitor<RetryOptions>>(monitor);
+        services.AddResiliencePipeline<RetryOptions>("api", "fast", (b, o) =>
+        {
+            builds++;
+            b.AddRetry(new RetryStrategyOptions { MaxRetryAttempts = o.MaxRetryAttempts });
+        });
+
+        using var provider = services.BuildServiceProvider();
+        var registry = provider.GetRequiredService<ResiliencePipelineRegistry<string>>();
+
+        _ = registry.GetPipeline("api");
+        Assert.Equal(1, builds);
+
+        monitor.Notify("slow");               // a different named instance
+        _ = registry.GetPipeline("api");
+        Assert.Equal(1, builds);              // not rebuilt
+
+        monitor.Notify("fast");               // ours
+        _ = registry.GetPipeline("api");
+        Assert.Equal(2, builds);
     }
 
     [Fact]

@@ -54,6 +54,7 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
                     if (!_options.ShouldHandleOutcome(completed))
                     {
                         // Success — no need for more attempts.
+                        StrategyActivity.SetOutcome(activity, "success");
                         return completed;
                     }
                 }
@@ -74,6 +75,7 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
                         var completed = await completedTask.ConfigureAwait(false);
                         if (!_options.ShouldHandleOutcome(completed))
                         {
+                            StrategyActivity.SetOutcome(activity, "success");
                             return completed;
                         }
 

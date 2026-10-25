@@ -110,50 +110,6 @@ and get that approved separately.
 ---
 
 
-### 71. `AddResiliencePipeline<TOptions>` Emits Trim Warnings Under Native AOT
-
-**Status:** Open
-**Type:** Improvement
-**Target:** post-1.0
-**Verified:** 2026-10-25 — `dotnet publish samples/Resilion.Samples/Resilion.Samples.csproj -c Release
--r osx-arm64 -p:PublishAot=true` → two `IL2091` warnings, at
-`ResilionServiceCollectionExtensions.cs:367` and `:402`.
-
-**Why**
-
-`MonitoredPipelineConfigurator<TOptions>` and `MonitoredTypedPipelineConfigurator<TResult, TOptions>`
-pass their `TOptions` to `IOptionsMonitor<TOptions>`, which annotates its type parameter with
-`DynamicallyAccessedMemberTypes.PublicParameterlessConstructor`. Ours carries no matching
-annotation, so the trimmer cannot prove the constructor survives.
-
-**This does not fail CI**, because `IL2091` is not in the `/warnaserror` list `test.yml` uses
-(`IL2026,IL2070,IL2072,IL3050,IL3053`), and the AOT publish succeeds. It is also consistent with
-`Resilion.Extensions` declaring `IsAotCompatible=false` — the package does not claim to be
-trim-safe. But an application that AOT-publishes while using the reload overloads sees two
-warnings pointing into this library, which is a poor first impression.
-
-Introduced with the reload overloads in #41 (commit `c4437b4`), not by anything later.
-
-**Fix**
-
-Annotate the two type parameters:
-
-```csharp
-internal sealed class MonitoredPipelineConfigurator<
-    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] TOptions>
-```
-
-and propagate the annotation up through the four public `AddResiliencePipeline<TOptions>` overloads.
-
-**Why it was not done before 1.0:** the annotation on a public generic parameter propagates the
-requirement to callers, so a caller with its own generic wrapper would start seeing the warning at
-its call site. That is source-compatible and can be added in any later version without breaking
-anyone, so it did not need to beat the API freeze. Doing it reflexively minutes before the tag was
-the worse option.
-
-**Effort:** Low.
-
----
 
 ### 70. `FallbackAction` `Task.Run` Missing `CancellationToken`
 
@@ -317,55 +273,8 @@ delay without the core knowing anything about HTTP.
 
 ---
 
-### 64. Composable Event Handlers
 
-**Status:** Open
-**Type:** Improvement
-**Target:** unscheduled
-**Verified:** 2026-10-23 — `grep -n 'internal.*Invoke' src/Resilion/ResilienceEventHandler.cs`.
 
-**Why**
-
-`ResilienceEventHandler<TArgs>`'s invocation is internal, so an out-of-package strategy or handler
-can only *replace* a user's `OnRetry`, never wrap it. `Resilion.Http` wanted to hook retry for
-response disposal and could not, which is why it carries its own attempt tracker instead.
-
-Any future package wanting to observe a user-supplied callback hits the same wall.
-
----
-
-### 65. Registry Factory with IServiceProvider
-
-**Status:** Open
-**Type:** Improvement
-**Target:** unscheduled
-**Verified:** 2026-10-23 — `ResiliencePipelineRegistry.RegisterPipeline` takes
-`Action<PipelineBuilder<TResult>>` with no provider.
-
-**Why**
-
-A pipeline built lazily by the registry cannot resolve services, because the factory signature
-carries no `IServiceProvider`. `Resilion.Http` works around it with a small accessor the handler
-factory fills immediately before resolving the pipeline — deterministic, but indirection that an
-`Action<PipelineBuilder<TResult>, IServiceProvider>` overload would delete outright.
-
----
-
-### 66. Synchronous ExecuteOutcome
-
-**Status:** Open
-**Type:** Feature
-**Target:** unscheduled
-**Verified:** 2026-10-23 — `Pipeline<TResult>` exposes `ExecuteOutcomeAsync` but no sync equivalent.
-
-**Why**
-
-`ExecuteOutcomeAsync` is what lets a caller see the winning outcome without it being thrown, which
-is how `Resilion.Http` identifies the response to keep and disposes the rest. There is no
-synchronous counterpart, so `HttpClient.Send` cannot be supported without either leaking responses
-or behaving differently from the async path — it throws `NotSupportedException` instead.
-
----
 
 ### 4. Per-Call Delegate Allocation in Pipeline Chain
 
@@ -562,42 +471,6 @@ usefully bound, since `Behavior` is required and is a delegate.
 
 ---
 
-### 69. No Chaos Injection on the Standard HTTP Handler
-
-**Status:** Open
-**Type:** Feature
-**Target:** unscheduled
-**Verified:** 2026-10-23 — `grep -n 'Chaos' src/Resilion.Http/*.cs src/Resilion.Http/Internal/*.cs`
-→ no matches. `HttpStandardResilienceOptions` exposes `RateLimiter`, `TotalRequestTimeout`,
-`Retry`, `CircuitBreaker`, `AttemptTimeout` and `RequestReplay`, with no chaos hook.
-
-**Why**
-
-`AddStandardResilienceHandler` builds a fixed five-strategy pipeline, so there is no way to inject
-chaos into it. That is the pipeline most users will actually run, and therefore the one most worth
-testing — "does my standard handler really retry a 503?" is answerable only by making a 503 happen.
-
-**There is a real workaround, which is why this is unscheduled rather than P1:**
-`AddResilienceHandler(key, builder => …)` takes a pipeline you compose yourself, so you can
-reproduce the standard shape and add chaos innermost. The cost is that you now maintain a copy of
-the standard pipeline's defaults, which will drift from ours.
-
-**Options**
-
-1. **A `Chaos` property on `HttpStandardResilienceOptions`**, appended innermost when set. Smallest
-   surface, but it puts a `Resilion.Chaos` type on a `Resilion.Http` options class, which would
-   make `Resilion.Http` depend on `Resilion.Chaos` — a chaos dependency for every HTTP consumer.
-   Probably disqualifying on its own.
-2. **A separate `AddStandardResilienceHandlerWithChaos` in a `Resilion.Http.Chaos` package**, which
-   depends on both and keeps the base package clean. More packaging for a testing-only feature.
-3. **Expose the standard pipeline's configuration as a reusable builder action**, so a caller can
-   compose it with their own additions without copying the defaults. Solves the drift problem
-   generally, not just for chaos, and adds no cross-package dependency.
-
-(3) looks best and is the only one that helps anyone not doing chaos. Do not start any of them
-without deciding which.
-
----
 
 ### 11. Hedging: O(N²) `Task.WhenAny` Continuation Registration
 
@@ -675,7 +548,131 @@ cancellation.
 
 ---
 
+### 64. Composable Event Handlers
+
+**Status:** Open
+**Type:** Improvement
+**Target:** unscheduled
+**Verified:** 2026-10-23 — `grep -n 'internal.*Invoke' src/Resilion/ResilienceEventHandler.cs`.
+
+**Why**
+
+`ResilienceEventHandler<TArgs>`'s invocation is internal, so an out-of-package strategy or handler
+can only *replace* a user's `OnRetry`, never wrap it. `Resilion.Http` wanted to hook retry for
+response disposal and could not, which is why it carries its own attempt tracker instead.
+
+Any future package wanting to observe a user-supplied callback hits the same wall.
+
+---
+
+---
+
+### 65. Registry Factory with IServiceProvider
+
+**Status:** Open
+**Type:** Improvement
+**Target:** unscheduled
+**Verified:** 2026-10-23 — `ResiliencePipelineRegistry.RegisterPipeline` takes
+`Action<PipelineBuilder<TResult>>` with no provider.
+
+**Why**
+
+A pipeline built lazily by the registry cannot resolve services, because the factory signature
+carries no `IServiceProvider`. `Resilion.Http` works around it with a small accessor the handler
+factory fills immediately before resolving the pipeline — deterministic, but indirection that an
+`Action<PipelineBuilder<TResult>, IServiceProvider>` overload would delete outright.
+
+---
+
+---
+
+### 71. `AddResiliencePipeline<TOptions>` Emits Trim Warnings Under Native AOT
+
+**Status:** Open
+**Type:** Improvement
+**Target:** post-1.0
+**Verified:** 2026-10-25 — `dotnet publish samples/Resilion.Samples/Resilion.Samples.csproj -c Release
+-r osx-arm64 -p:PublishAot=true` → two `IL2091` warnings, at
+`ResilionServiceCollectionExtensions.cs:367` and `:402`.
+
+**Why**
+
+`MonitoredPipelineConfigurator<TOptions>` and `MonitoredTypedPipelineConfigurator<TResult, TOptions>`
+pass their `TOptions` to `IOptionsMonitor<TOptions>`, which annotates its type parameter with
+`DynamicallyAccessedMemberTypes.PublicParameterlessConstructor`. Ours carries no matching
+annotation, so the trimmer cannot prove the constructor survives.
+
+**This does not fail CI**, because `IL2091` is not in the `/warnaserror` list `test.yml` uses
+(`IL2026,IL2070,IL2072,IL3050,IL3053`), and the AOT publish succeeds. It is also consistent with
+`Resilion.Extensions` declaring `IsAotCompatible=false` — the package does not claim to be
+trim-safe. But an application that AOT-publishes while using the reload overloads sees two
+warnings pointing into this library, which is a poor first impression.
+
+Introduced with the reload overloads in #41 (commit `c4437b4`), not by anything later.
+
+**Fix**
+
+Annotate the two type parameters:
+
+```csharp
+internal sealed class MonitoredPipelineConfigurator<
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] TOptions>
+```
+
+and propagate the annotation up through the four public `AddResiliencePipeline<TOptions>` overloads.
+
+**Why it was not done before 1.0:** the annotation on a public generic parameter propagates the
+requirement to callers, so a caller with its own generic wrapper would start seeing the warning at
+its call site. That is source-compatible and can be added in any later version without breaking
+anyone, so it did not need to beat the API freeze. Doing it reflexively minutes before the tag was
+the worse option.
+
+**Effort:** Low.
+
+---
+
+---
+
 ## P3 — Blocked / needs external change
+
+### 69. No Chaos Injection on the Standard HTTP Handler
+
+**Status:** Open
+**Type:** Feature
+**Target:** unscheduled
+**Verified:** 2026-10-23 — `grep -n 'Chaos' src/Resilion.Http/*.cs src/Resilion.Http/Internal/*.cs`
+→ no matches. `HttpStandardResilienceOptions` exposes `RateLimiter`, `TotalRequestTimeout`,
+`Retry`, `CircuitBreaker`, `AttemptTimeout` and `RequestReplay`, with no chaos hook.
+
+**Why**
+
+`AddStandardResilienceHandler` builds a fixed five-strategy pipeline, so there is no way to inject
+chaos into it. That is the pipeline most users will actually run, and therefore the one most worth
+testing — "does my standard handler really retry a 503?" is answerable only by making a 503 happen.
+
+**There is a real workaround, which is why this is unscheduled rather than P1:**
+`AddResilienceHandler(key, builder => …)` takes a pipeline you compose yourself, so you can
+reproduce the standard shape and add chaos innermost. The cost is that you now maintain a copy of
+the standard pipeline's defaults, which will drift from ours.
+
+**Options**
+
+1. **A `Chaos` property on `HttpStandardResilienceOptions`**, appended innermost when set. Smallest
+   surface, but it puts a `Resilion.Chaos` type on a `Resilion.Http` options class, which would
+   make `Resilion.Http` depend on `Resilion.Chaos` — a chaos dependency for every HTTP consumer.
+   Probably disqualifying on its own.
+2. **A separate `AddStandardResilienceHandlerWithChaos` in a `Resilion.Http.Chaos` package**, which
+   depends on both and keeps the base package clean. More packaging for a testing-only feature.
+3. **Expose the standard pipeline's configuration as a reusable builder action**, so a caller can
+   compose it with their own additions without copying the defaults. Solves the drift problem
+   generally, not just for chaos, and adds no cross-package dependency.
+
+(3) looks best and is the only one that helps anyone not doing chaos. Do not start any of them
+without deciding which.
+
+---
+
+---
 
 ### 48. Benchmark CI on PRs
 
@@ -773,11 +770,23 @@ a non-empty report, this item is solved without touching a single project file.
 **Decision:** `coverlet.collector` stays in place for now — a harmless no-op under MTP that at least
 doesn't break the build.
 
-**Unrelated cleanup to fold in:** `Microsoft.Extensions.TimeProvider.Testing` is **8.0.0** in
-`tests/Resilion.Tests` and **9.0.0** in `tests/Resilion.Extensions.Tests`. Standardize on 9.0.0 in
-`tests/Directory.Build.props` and drop both per-project references.
-
 **Effort:** Medium, mostly experimentation.
+
+---
+
+### 66. Synchronous ExecuteOutcome
+
+**Status:** Open
+**Type:** Feature
+**Target:** unscheduled
+**Verified:** 2026-10-23 — `Pipeline<TResult>` exposes `ExecuteOutcomeAsync` but no sync equivalent.
+
+**Why**
+
+`ExecuteOutcomeAsync` is what lets a caller see the winning outcome without it being thrown, which
+is how `Resilion.Http` identifies the response to keep and disposes the rest. There is no
+synchronous counterpart, so `HttpClient.Send` cannot be supported without either leaking responses
+or behaving differently from the async path — it throws `NotSupportedException` instead.
 
 ---
 

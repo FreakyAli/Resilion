@@ -46,7 +46,9 @@ grep -rn '\.Add(1' src/ --include='*.cs' | grep -v '/obj/' | wc -l
 
 # Does hedging copy PipelineName to per-attempt contexts?  (future-plans #59)
 grep -n 'PipelineName\|OperationKey\|ContinueOnCapturedContext' src/Resilion/Hedging/HedgingStrategy.cs
-# Expected today: OperationKey and ContinueOnCapturedContext are copied; PipelineName is NOT.
+# Expected: PipelineName, OperationKey and ContinueOnCapturedContext are all copied to the
+# per-attempt contexts, on both the async and sync paths. (was: PipelineName was omitted, so every
+# strategy nested inside hedging emitted a null pipeline.name tag.)
 ```
 
 ## Public API surface
@@ -94,8 +96,11 @@ unzip -l "$TMPDIR/rpack"/Resilion.*.snupkg | grep '\.pdb'      # expect lib/net8
 
 # How many packages does the release workflow expect?
 grep -n 'dotnet pack\|COUNT\|PROJECTS' .github/workflows/release-nuget.yml
-# Today: three explicit pack lines and a hardcoded `-ne 3`. Every new package breaks
-# every release until this is data-driven.
+# Expected: one pack loop over a PROJECTS array, with EXPECTED_PACKAGE_COUNT derived from its
+# length rather than hardcoded. The array must list every src package — as of 1.0.0: Resilion,
+# Resilion.Extensions, Resilion.RateLimiting, Resilion.Http, Resilion.Chaos. A package missing
+# from it is published by nobody and the count assert still passes, so check the array itself,
+# not just the count. (was: three explicit pack lines and a hardcoded `-ne 3`.)
 
 # Version stamping
 grep -n 'Version\|VersionPrefix' src/Directory.Build.props
@@ -171,10 +176,14 @@ grep -n 'coverlet\|CodeCoverage\|TestingPlatformDotnetTestSupport' tests/Directo
 
 # Test-dependency drift
 grep -rn 'TimeProvider.Testing' tests/
-# Expected today: 8.0.0 in Resilion.Tests, 9.0.0 in Resilion.Extensions.Tests — inconsistent.
+# Expected: a single reference in tests/Directory.Build.props pinning 9.0.0 for every test
+# project, and no per-project references. (was: 8.0.0 in Resilion.Tests and 9.0.0 in
+# Resilion.Extensions.Tests, so the fake clock under test was not the same one everywhere.)
 
 # Vulnerability disclosure policy  (future-plans #53)
-ls SECURITY.md .github/SECURITY.md 2>&1        # expected today: neither exists
+ls SECURITY.md .github/SECURITY.md 2>&1
+# Expected: SECURITY.md exists at the repository root; .github/SECURITY.md does not, and should
+# not — GitHub reads either, and two copies drift. (was: neither existed.)
 ```
 
 ## Self-consistency of `future-plans.md`
