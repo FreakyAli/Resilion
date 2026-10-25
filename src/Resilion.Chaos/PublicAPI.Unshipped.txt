@@ -1,0 +1,85 @@
+#nullable enable
+Resilion.Chaos.ChaosBehaviorExtensions
+Resilion.Chaos.ChaosBehaviorStrategyOptions
+Resilion.Chaos.ChaosBehaviorStrategyOptions.Behavior.get -> Resilion.ResilienceEventHandler<Resilion.Chaos.ChaosGeneratorArgs>?
+Resilion.Chaos.ChaosBehaviorStrategyOptions.Behavior.init -> void
+Resilion.Chaos.ChaosBehaviorStrategyOptions.OnBehaviorInjected.get -> Resilion.ResilienceEventHandler<Resilion.Chaos.OnChaosBehaviorArgs>?
+Resilion.Chaos.ChaosBehaviorStrategyOptions.OnBehaviorInjected.init -> void
+Resilion.Chaos.ChaosFaultExtensions
+Resilion.Chaos.ChaosFaultStrategyOptions
+Resilion.Chaos.ChaosFaultStrategyOptions.Fault.get -> System.Exception?
+Resilion.Chaos.ChaosFaultStrategyOptions.Fault.init -> void
+Resilion.Chaos.ChaosFaultStrategyOptions.FaultGenerator.get -> System.Func<Resilion.Chaos.ChaosGeneratorArgs, System.Exception?>?
+Resilion.Chaos.ChaosFaultStrategyOptions.FaultGenerator.init -> void
+Resilion.Chaos.ChaosFaultStrategyOptions.OnFaultInjected.get -> Resilion.ResilienceEventHandler<Resilion.Chaos.OnChaosFaultArgs>?
+Resilion.Chaos.ChaosFaultStrategyOptions.OnFaultInjected.init -> void
+Resilion.Chaos.ChaosGeneratorArgs
+Resilion.Chaos.ChaosGeneratorArgs.ChaosGeneratorArgs() -> void
+Resilion.Chaos.ChaosGeneratorArgs.ChaosGeneratorArgs(Resilion.ResilienceContext! Context) -> void
+Resilion.Chaos.ChaosGeneratorArgs.Context.get -> Resilion.ResilienceContext!
+Resilion.Chaos.ChaosGeneratorArgs.Context.init -> void
+Resilion.Chaos.ChaosLatencyExtensions
+Resilion.Chaos.ChaosLatencyStrategyOptions
+Resilion.Chaos.ChaosLatencyStrategyOptions.Latency.get -> System.TimeSpan
+Resilion.Chaos.ChaosLatencyStrategyOptions.Latency.init -> void
+Resilion.Chaos.ChaosLatencyStrategyOptions.LatencyGenerator.get -> System.Func<Resilion.Chaos.ChaosGeneratorArgs, System.TimeSpan>?
+Resilion.Chaos.ChaosLatencyStrategyOptions.LatencyGenerator.init -> void
+Resilion.Chaos.ChaosLatencyStrategyOptions.OnLatencyInjected.get -> Resilion.ResilienceEventHandler<Resilion.Chaos.OnChaosLatencyArgs>?
+Resilion.Chaos.ChaosLatencyStrategyOptions.OnLatencyInjected.init -> void
+Resilion.Chaos.ChaosOutcomeExtensions
+Resilion.Chaos.ChaosOutcomeStrategyOptions<TResult>
+Resilion.Chaos.ChaosOutcomeStrategyOptions<TResult>.OnOutcomeInjected.get -> Resilion.ResilienceEventHandler<Resilion.Chaos.OnChaosOutcomeArgs<TResult>>?
+Resilion.Chaos.ChaosOutcomeStrategyOptions<TResult>.OnOutcomeInjected.init -> void
+Resilion.Chaos.ChaosOutcomeStrategyOptions<TResult>.Outcome.get -> Resilion.Outcome<TResult>?
+Resilion.Chaos.ChaosOutcomeStrategyOptions<TResult>.Outcome.init -> void
+Resilion.Chaos.ChaosOutcomeStrategyOptions<TResult>.OutcomeGenerator.get -> System.Func<Resilion.Chaos.ChaosGeneratorArgs, Resilion.Outcome<TResult>>?
+Resilion.Chaos.ChaosOutcomeStrategyOptions<TResult>.OutcomeGenerator.init -> void
+Resilion.Chaos.ChaosStrategyOptions
+Resilion.Chaos.ChaosStrategyOptions.Enabled.get -> bool
+Resilion.Chaos.ChaosStrategyOptions.Enabled.init -> void
+Resilion.Chaos.ChaosStrategyOptions.EnabledGenerator.get -> System.Func<Resilion.Chaos.ChaosGeneratorArgs, bool>?
+Resilion.Chaos.ChaosStrategyOptions.EnabledGenerator.init -> void
+Resilion.Chaos.ChaosStrategyOptions.InjectionRate.get -> double
+Resilion.Chaos.ChaosStrategyOptions.InjectionRate.init -> void
+Resilion.Chaos.ChaosStrategyOptions.InjectionRateGenerator.get -> System.Func<Resilion.Chaos.ChaosGeneratorArgs, double>?
+Resilion.Chaos.ChaosStrategyOptions.InjectionRateGenerator.init -> void
+Resilion.Chaos.ChaosStrategyOptions.Randomizer.get -> System.Func<double>?
+Resilion.Chaos.ChaosStrategyOptions.Randomizer.init -> void
+Resilion.Chaos.OnChaosBehaviorArgs
+Resilion.Chaos.OnChaosBehaviorArgs.Context.get -> Resilion.ResilienceContext!
+Resilion.Chaos.OnChaosBehaviorArgs.Context.init -> void
+Resilion.Chaos.OnChaosBehaviorArgs.OnChaosBehaviorArgs() -> void
+Resilion.Chaos.OnChaosBehaviorArgs.OnChaosBehaviorArgs(Resilion.ResilienceContext! Context) -> void
+Resilion.Chaos.OnChaosFaultArgs
+Resilion.Chaos.OnChaosFaultArgs.Context.get -> Resilion.ResilienceContext!
+Resilion.Chaos.OnChaosFaultArgs.Context.init -> void
+Resilion.Chaos.OnChaosFaultArgs.Fault.get -> System.Exception!
+Resilion.Chaos.OnChaosFaultArgs.Fault.init -> void
+Resilion.Chaos.OnChaosFaultArgs.OnChaosFaultArgs() -> void
+Resilion.Chaos.OnChaosFaultArgs.OnChaosFaultArgs(Resilion.ResilienceContext! Context, System.Exception! Fault) -> void
+Resilion.Chaos.OnChaosLatencyArgs
+Resilion.Chaos.OnChaosLatencyArgs.Context.get -> Resilion.ResilienceContext!
+Resilion.Chaos.OnChaosLatencyArgs.Context.init -> void
+Resilion.Chaos.OnChaosLatencyArgs.Latency.get -> System.TimeSpan
+Resilion.Chaos.OnChaosLatencyArgs.Latency.init -> void
+Resilion.Chaos.OnChaosLatencyArgs.OnChaosLatencyArgs() -> void
+Resilion.Chaos.OnChaosLatencyArgs.OnChaosLatencyArgs(Resilion.ResilienceContext! Context, System.TimeSpan Latency) -> void
+Resilion.Chaos.OnChaosOutcomeArgs<TResult>
+Resilion.Chaos.OnChaosOutcomeArgs<TResult>.Context.get -> Resilion.ResilienceContext!
+Resilion.Chaos.OnChaosOutcomeArgs<TResult>.Context.init -> void
+Resilion.Chaos.OnChaosOutcomeArgs<TResult>.OnChaosOutcomeArgs() -> void
+Resilion.Chaos.OnChaosOutcomeArgs<TResult>.OnChaosOutcomeArgs(Resilion.ResilienceContext! Context, Resilion.Outcome<TResult> Outcome) -> void
+Resilion.Chaos.OnChaosOutcomeArgs<TResult>.Outcome.get -> Resilion.Outcome<TResult>
+Resilion.Chaos.OnChaosOutcomeArgs<TResult>.Outcome.init -> void
+static Resilion.Chaos.ChaosBehaviorExtensions.AddChaosBehavior(this Resilion.PipelineBuilder! builder, Resilion.Chaos.ChaosBehaviorStrategyOptions! options) -> Resilion.PipelineBuilder!
+static Resilion.Chaos.ChaosBehaviorExtensions.AddChaosBehavior<TResult>(this Resilion.PipelineBuilder<TResult>! builder, Resilion.Chaos.ChaosBehaviorStrategyOptions! options) -> Resilion.PipelineBuilder<TResult>!
+static Resilion.Chaos.ChaosFaultExtensions.AddChaosFault(this Resilion.PipelineBuilder! builder, Resilion.Chaos.ChaosFaultStrategyOptions! options) -> Resilion.PipelineBuilder!
+static Resilion.Chaos.ChaosFaultExtensions.AddChaosFault(this Resilion.PipelineBuilder! builder, double injectionRate, System.Func<System.Exception!>! faultFactory) -> Resilion.PipelineBuilder!
+static Resilion.Chaos.ChaosFaultExtensions.AddChaosFault<TResult>(this Resilion.PipelineBuilder<TResult>! builder, Resilion.Chaos.ChaosFaultStrategyOptions! options) -> Resilion.PipelineBuilder<TResult>!
+static Resilion.Chaos.ChaosFaultExtensions.AddChaosFault<TResult>(this Resilion.PipelineBuilder<TResult>! builder, double injectionRate, System.Func<System.Exception!>! faultFactory) -> Resilion.PipelineBuilder<TResult>!
+static Resilion.Chaos.ChaosLatencyExtensions.AddChaosLatency(this Resilion.PipelineBuilder! builder, Resilion.Chaos.ChaosLatencyStrategyOptions! options) -> Resilion.PipelineBuilder!
+static Resilion.Chaos.ChaosLatencyExtensions.AddChaosLatency(this Resilion.PipelineBuilder! builder, double injectionRate, System.TimeSpan latency) -> Resilion.PipelineBuilder!
+static Resilion.Chaos.ChaosLatencyExtensions.AddChaosLatency<TResult>(this Resilion.PipelineBuilder<TResult>! builder, Resilion.Chaos.ChaosLatencyStrategyOptions! options) -> Resilion.PipelineBuilder<TResult>!
+static Resilion.Chaos.ChaosLatencyExtensions.AddChaosLatency<TResult>(this Resilion.PipelineBuilder<TResult>! builder, double injectionRate, System.TimeSpan latency) -> Resilion.PipelineBuilder<TResult>!
+static Resilion.Chaos.ChaosOutcomeExtensions.AddChaosOutcome<TResult>(this Resilion.PipelineBuilder<TResult>! builder, Resilion.Chaos.ChaosOutcomeStrategyOptions<TResult>! options) -> Resilion.PipelineBuilder<TResult>!
+static Resilion.Chaos.ChaosOutcomeExtensions.AddChaosOutcome<TResult>(this Resilion.PipelineBuilder<TResult>! builder, double injectionRate, System.Func<TResult>! resultFactory) -> Resilion.PipelineBuilder<TResult>!

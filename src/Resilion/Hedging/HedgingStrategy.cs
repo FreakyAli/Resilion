@@ -87,9 +87,9 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
                 ResilionTelemetry.HedgingAttempts.Add(1, new(ResilionTelemetry.PipelineNameTag, context.PipelineName), new(ResilionTelemetry.OperationKeyTag, context.OperationKey));
 
                 // Fire OnHedging event.
-                if (_options.OnHedging is { } handler && handler.HasHandler)
+                if (_options.OnHedging is { } handler)
                 {
-                    await handler.InvokeAsync(new OnHedgingEvent<TResult>(attemptIndex, context))
+                    await handler(new OnHedgingEvent<TResult>(attemptIndex, context))
                         .ConfigureAwait(false);
                 }
 
@@ -204,9 +204,9 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
                 // OnHedging handler is registered, so the counter and the event never disagree.
                 ResilionTelemetry.HedgingAttempts.Add(1, new(ResilionTelemetry.PipelineNameTag, context.PipelineName), new(ResilionTelemetry.OperationKeyTag, context.OperationKey));
 
-                if (_options.OnHedging is { } handler && handler.HasHandler)
+                if (_options.OnHedging is { } handler)
                 {
-                    handler.Invoke(new OnHedgingEvent<TResult>(attemptIndex + 1, context));
+                    handler.InvokeSync(new OnHedgingEvent<TResult>(attemptIndex + 1, context));
                 }
             }
         }

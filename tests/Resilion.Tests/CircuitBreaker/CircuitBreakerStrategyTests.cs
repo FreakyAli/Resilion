@@ -114,8 +114,11 @@ public class CircuitBreakerStrategyTests
     {
         var fakeTime = new FakeTimeProvider();
         var stateChanges = new List<(CircuitState From, CircuitState To)>();
-        Action<CircuitStateChangedEvent> onState = e =>
+        ResilienceEventHandler<CircuitStateChangedEvent> onState = e =>
+        {
             stateChanges.Add((e.PreviousState, e.CurrentState));
+            return default;
+        };
 
         var pipeline = Pipeline.Create(b =>
         {

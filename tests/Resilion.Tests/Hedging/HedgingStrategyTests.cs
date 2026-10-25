@@ -175,8 +175,11 @@ public class HedgingStrategyTests
     public async Task OnHedging_FiredForEachHedgedAttempt()
     {
         var hedgingEvents = new List<int>();
-        Action<OnHedgingEvent<string>> onHedging = e =>
+        ResilienceEventHandler<OnHedgingEvent<string>> onHedging = e =>
+        {
             hedgingEvents.Add(e.AttemptNumber);
+            return default;
+        };
 
         var pipeline = Pipeline.Create<string>(b => b.AddHedging(
             new HedgingStrategyOptions<string>

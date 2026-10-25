@@ -35,19 +35,20 @@ entry without a row here — is a bug in this file; see CONTRIBUTING.md § Futur
 
 | # | Item | Priority | Type | Target | Effort | Status |
 |---|------|----------|------|--------|--------|--------|
-| 62 | Event handler properties reject a bare lambda | P1 | Improvement | post-1.0 | Medium | Open |
 | 63 | Outcome-aware retry delay (blocks Retry-After) | P1 | Feature | post-1.0 | Medium | Open |
 | 4 | Per-call delegate allocation in pipeline chain | P1 | Improvement | post-1.0 | High | Open |
 | 64 | Composable event handlers | P2 | Improvement | unscheduled | Medium | Open |
 | 65 | Registry factory with IServiceProvider | P2 | Improvement | unscheduled | Low | Open |
 | 66 | Synchronous ExecuteOutcome | P3 | Feature | unscheduled | Medium | Open |
 | 27 | Retry typed/untyped strategy duplication (4 loops) | P1 | Improvement | post-1.0 | Medium | Open |
-| 30 | FallbackAction/ResilienceEventHandler Task.Run missing token | P1 | Fix | post-1.0 | Low | Open |
-| 9 | Sync retry delay bypasses TimeProvider (untestable) | P1 | Fix | post-1.0 | Low | Open |
+| 70 | FallbackAction Task.Run missing CancellationToken | P1 | Fix | post-1.0 | Low | Open |
+| 71 | AddResiliencePipeline<TOptions> emits IL2091 under Native AOT | P2 | Improvement | post-1.0 | Low | Open |
+| 9 | Synchronous delays bypass TimeProvider (untestable) | P1 | Fix | post-1.0 | Low | Open |
 | 54 | Evaluate multi-targeting net9.0 for System.Threading.Lock | P1 | Improvement | post-1.0 | Medium | Open |
 | 45 | Telemetry enrichment (MeteringEnricher, listeners) | P2 | Feature | unscheduled | High | Open |
+| 68 | Chaos strategy options not bindable from IConfiguration | P2 | Feature | unscheduled | Low | Open |
+| 69 | No chaos injection on the standard HTTP handler | P3 | Feature | unscheduled | Medium | Open |
 | 67 | Registry caches a failed pipeline build until invalidated | P2 | Improvement | unscheduled | Low | Open |
-| 40 | Resilion.Chaos — chaos engineering | P2 | Feature | unscheduled | High | Open |
 | 11 | Hedging: O(N²) WhenAny continuation registration (needs #54) | P2 | Improvement | unscheduled | Medium | Open |
 | 5 | CancellationTokenSource pooling for Timeout | P2 | Improvement | unscheduled | Medium | Open |
 | 48 | Benchmark CI on PRs | P3 | Infrastructure | unscheduled | Low | Open |
@@ -63,54 +64,6 @@ already claims untrue, or produces a silently wrong answer.
 
 ## P1 — Next (post-1.0)
 
-### 62. Event Handler Properties Reject a Bare Lambda
-
-**Status:** Open
-**Type:** Improvement
-**Target:** post-1.0
-**Verified:** 2026-10-23 — compiled `new RetryStrategyOptions { OnRetry = ctx => ... }` against the
-built `Resilion.dll`: `error CS1660`. A method group gives `error CS0428`. A typed local, an inline
-cast, and `new Action<TArgs>(...)` all compile.
-
-**Why**
-
-`ResilienceEventHandler<TArgs>` is a wrapper struct with implicit conversions from
-`Action<TArgs>` and `Func<TArgs, ValueTask>`. Implicit conversion does not help the compiler
-convert a *lambda*, because a lambda needs a delegate target type and this is not one. So the
-obvious syntax does not compile:
-
-```csharp
-// CS1660
-new RetryStrategyOptions { OnRetry = ctx => logger.LogWarning("retry {N}", ctx.AttemptNumber) };
-
-// CS0428
-new RetryStrategyOptions { OnRetry = LogRetry };
-```
-
-and the caller must write `new Action<RetryAttemptEvent>(ctx => ...)`, an inline cast, or a typed
-local instead.
-
-This matters more than a normal papercut because sync callback ergonomics is one of the five
-reasons `comparison-with-polly.md` gives for choosing this library, and Polly's plain-delegate
-properties *do* take a lambda. The README's own example was uncompilable from 1.0 until it was
-corrected — nobody had run it.
-
-**Possible fixes**
-
-1. **Add `Action<TArgs>`-typed sibling properties** (`OnRetryAction` and friends) alongside the
-   existing ones, with the options record reconciling them. Purely additive, works on a frozen
-   surface, but doubles the callback surface and creates two ways to say one thing — which is
-   exactly what `RetryDelay`'s closed union exists to avoid.
-2. **Make the options properties plain `Action<TArgs>`** and move the sync-or-async union behind a
-   separate `...Async` property per callback. Cleanest to use, but a breaking change to every
-   options record, so 2.0 only.
-3. **Document it and accept it.** Current state. The implicit conversions still earn their keep —
-   a synchronous handler runs inline with no `ValueTask` allocation — the cost is brevity, not
-   performance.
-
-Decide between (1) and (2) before 2.0 rather than drifting into (3) permanently.
-
----
 
 ### 27. Retry Typed/Non-Generic Strategy Duplication
 
@@ -156,47 +109,101 @@ and get that approved separately.
 
 ---
 
-### 30. FallbackAction/ResilienceEventHandler `Task.Run` Missing `CancellationToken`
+
+### 71. `AddResiliencePipeline<TOptions>` Emits Trim Warnings Under Native AOT
 
 **Status:** Open
-**Type:** Fix
+**Type:** Improvement
 **Target:** post-1.0
-**Verified:** 2026-09-30 — `grep -n 'Task.Run' src/Resilion/Fallback/FallbackAction.cs src/Resilion/ResilienceEventHandler.cs`
-→ `FallbackAction.cs:64`, `ResilienceEventHandler.cs:93`, neither passing a token.
+**Verified:** 2026-10-25 — `dotnet publish samples/Resilion.Samples/Resilion.Samples.csproj -c Release
+-r osx-arm64 -p:PublishAot=true` → two `IL2091` warnings, at
+`ResilionServiceCollectionExtensions.cs:367` and `:402`.
 
 **Why**
 
-Both `FallbackAction<T>.Execute` and `ResilienceEventHandler<T>.Invoke` call
-`Task.Run(() => …).GetAwaiter().GetResult()` for sync-over-async without passing a
-`CancellationToken`.
+`MonitoredPipelineConfigurator<TOptions>` and `MonitoredTypedPipelineConfigurator<TResult, TOptions>`
+pass their `TOptions` to `IOptionsMonitor<TOptions>`, which annotates its type parameter with
+`DynamicallyAccessedMemberTypes.PublicParameterlessConstructor`. Ours carries no matching
+annotation, so the trimmer cannot prove the constructor survives.
 
-**Be accurate about the benefit.** `Task.Run(f, ct)` only declines to *schedule* work when `ct` is
-already cancelled. It cannot interrupt a running handler, and the surrounding
-`.GetAwaiter().GetResult()` blocks the calling thread regardless. So this is correct hygiene, not a
-cancellation fix — which is why it is not a blocker.
+**This does not fail CI**, because `IL2091` is not in the `/warnaserror` list `test.yml` uses
+(`IL2026,IL2070,IL2072,IL3050,IL3053`), and the AOT publish succeeds. It is also consistent with
+`Resilion.Extensions` declaring `IsAotCompatible=false` — the package does not claim to be
+trim-safe. But an application that AOT-publishes while using the reload overloads sees two
+warnings pointing into this library, which is a poor first impression.
+
+Introduced with the reload overloads in #41 (commit `c4437b4`), not by anything later.
 
 **Fix**
 
-Cheap and API-free. `ResilienceEventHandler<TArgs>.Invoke` is internal, so it can take a
-`CancellationToken cancellationToken = default` parameter with zero public-API impact, threaded from
-`context.CancellationToken` at each internal call site. `FallbackContext<TResult>` already carries
-`Context.CancellationToken`, so `FallbackAction.Execute` needs no signature change at all.
+Annotate the two type parameters:
 
-**Tests must force a `SynchronizationContext`** to reach the `Task.Run` branch — the handler
-short-circuits the thread hop entirely when `SynchronizationContext.Current is null`, which is the
-common case and the default under xunit.
+```csharp
+internal sealed class MonitoredPipelineConfigurator<
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] TOptions>
+```
+
+and propagate the annotation up through the four public `AddResiliencePipeline<TOptions>` overloads.
+
+**Why it was not done before 1.0:** the annotation on a public generic parameter propagates the
+requirement to callers, so a caller with its own generic wrapper would start seeing the warning at
+its call site. That is source-compatible and can be added in any later version without breaking
+anyone, so it did not need to beat the API freeze. Doing it reflexively minutes before the tag was
+the worse option.
 
 **Effort:** Low.
 
 ---
 
-### 9. Sync Retry Delay Bypasses `TimeProvider` (Untestable)
+### 70. `FallbackAction` `Task.Run` Missing `CancellationToken`
 
 **Status:** Open
 **Type:** Fix
 **Target:** post-1.0
-**Verified:** 2026-09-30 — `grep -n 'WaitHandle' src/Resilion/Retry/RetryStrategy.cs`
-→ `:170` and `:295`, both `context.CancellationToken.WaitHandle.WaitOne(delay)`.
+**Verified:** 2026-10-24 — `grep -rn 'Task.Run' src/Resilion/Fallback/FallbackAction.cs
+src/Resilion/ResilienceEventHandler.cs` → one call site, `FallbackAction.cs:64`, passing no token.
+The only hit in `ResilienceEventHandler.cs` is prose in a doc comment.
+
+**Why**
+
+This is the surviving half of retired #30. `FallbackAction<T>.Execute` calls
+`Task.Run(() => factory(context).AsTask()).GetAwaiter().GetResult()` for sync-over-async without
+passing a `CancellationToken`. The other half — the same pattern in
+`ResilienceEventHandler<T>.Invoke` — disappeared when that type became a delegate (#62): its
+replacement clears the `SynchronizationContext` and runs the handler on the calling thread instead
+of dispatching to the pool, so there is no `Task.Run` left to pass a token to.
+
+**Be accurate about the benefit.** `Task.Run(f, ct)` only declines to *schedule* work when `ct` is
+already cancelled. It cannot interrupt a running factory, and the surrounding
+`.GetAwaiter().GetResult()` blocks the calling thread regardless. Correct hygiene, not a
+cancellation fix.
+
+**Fix**
+
+`FallbackContext<TResult>` already carries `Context.CancellationToken`, so `Execute` needs no
+signature change — pass it to `Task.Run`. **Public API: none.**
+
+Worth considering at the same time: whether `FallbackAction` should adopt #62's approach and clear
+the `SynchronizationContext` rather than dispatching to the pool, which would remove the thread hop
+for a synchronously-completing fallback factory exactly as it did for handlers. That is the larger
+and more useful change of the two.
+
+**A test must force a `SynchronizationContext`** to reach the `Task.Run` branch at all — it is
+skipped when `SynchronizationContext.Current is null`, which is the default under xunit. See
+`ResilienceEventHandlerTests`' `DeadEndSynchronizationContext` for the pattern.
+
+**Effort:** Low.
+
+---
+
+### 9. Synchronous Delays Bypass `TimeProvider` (Untestable)
+
+**Status:** Open
+**Type:** Fix
+**Target:** post-1.0
+**Verified:** 2026-10-23 — `grep -rn 'WaitHandle.WaitOne' src/ --include='*.cs' | grep -v /obj/`
+→ three sites: `src/Resilion/Retry/RetryStrategy.cs:143`, `:272`, and
+`src/Resilion.Chaos/ChaosLatencyStrategy.cs:56`.
 
 **Why**
 
@@ -207,17 +214,26 @@ default (`CanBeCanceled == false`) token the runtime uses a static never-signall
 allocation at all. Across a retry loop the cost amortises to near zero, and the obvious alternatives
 are worse: `Thread.Sleep` loses cancellation responsiveness, spin-polling burns CPU.
 
-**The real defect** is that `RetryStrategy.cs:170` and `:295` wait via `WaitHandle.WaitOne(delay)`,
-**bypassing `_timeProvider` entirely**. `builder.TimeProvider` is this repo's single time-injection
-seam — it is how every other timing test uses `FakeTimeProvider`. So **synchronous retry delays cannot
-be driven by a fake clock, and no sync retry-timing test can be deterministic.**
+**The real defect** is that every synchronous delay in the library waits via
+`WaitHandle.WaitOne(delay)`, **bypassing the configured `TimeProvider` entirely**.
+`builder.TimeProvider` is this repo's single time-injection seam — it is how every other timing test
+uses `FakeTimeProvider`. So **no synchronous delay can be driven by a fake clock, and no sync
+timing test can be deterministic.**
+
+It was previously a retry-only problem. `Resilion.Chaos`'s latency strategy has the same shape and
+therefore inherits it: `ChaosLatencyStrategy.ExecuteAsync` delays through `_timeProvider` and is
+fully `FakeTimeProvider`-driven, while `Execute` cannot be. `ChaosLatencyStrategyTests` works
+around it with a short real delay and a comment pointing here.
+
+**Each new synchronous delay added to the library adds a site**, so the fix gets slightly more
+valuable each time rather than less.
 
 **Fix**
 
 Needs a sync-waitable abstraction over `TimeProvider` — something that can block the calling thread
 for a provider-controlled duration while remaining cancellation-responsive. That is a design change,
 not a patch, which is why this is not a 1.0 item. Do it when someone actually needs deterministic
-sync-retry timing coverage.
+sync timing coverage, or when a third site appears.
 
 **Effort:** Low to write, medium to design well.
 
@@ -507,59 +523,79 @@ exception's stack trace points at the first resolve, which may be long past.
 (1) with a short backoff is the only one that improves on today without a new hazard, and it is not
 obviously worth the machinery. Decide only if someone hits it.
 
-### 40. Resilion.Chaos — Chaos Engineering
+
+### 68. Chaos Strategy Options Are Not Bindable from `IConfiguration`
 
 **Status:** Open
 **Type:** Feature
 **Target:** unscheduled
-**Verified:** 2026-09-30 — no `src/Resilion.Chaos` directory; `grep -n 'Chaos' src/Resilion/Internal/StrategyType.cs`
-→ 0 hits.
+**Verified:** 2026-10-23 — `ls src/Resilion.Extensions/Configuration/` → five DTOs covering retry,
+retry delay, timeout, circuit breaker and hedging. No chaos DTO exists.
 
 **Why**
 
-Polly v8.3+ includes Simmy for chaos engineering — fault, outcome, latency and behavior injection.
-Table stakes for production resilience testing, and the biggest real feature gap after
-`Resilion.Http`.
+`Resilion.Extensions.Configuration` makes strategy options bindable from `appsettings.json`, and
+chaos is arguably the strategy that most wants it. Its two primary knobs are exactly the kind of
+thing an operator tunes per environment without a deploy:
 
-**Design**
+```json
+{ "Chaos": { "Fault": { "Enabled": true, "InjectionRate": 0.05 } } }
+```
 
-New package `Resilion.Chaos` with four strategies: `AddChaosFault`, `AddChaosOutcome`,
-`AddChaosLatency`, `AddChaosBehavior`. Shared options on a public abstract record base:
-`InjectionRate`, `InjectionRateGenerator`, `Enabled`, `EnabledGenerator` — **generators take
-precedence over static values**, resolved in one shared internal helper so the four strategies cannot
-diverge. Zero `PackageReference`s (one `ProjectReference` to `Resilion`), preserving the
-zero-dependency story.
+Today both have to be written in code, so turning injection up during a game day — or off during an
+incident — means a rebuild. Combined with #41's reload, a bindable DTO would make the injection
+rate adjustable at runtime, which is the natural way to run a chaos experiment.
 
-**`Randomizer` (`Func<double>?`) is not optional polish.** Without it, chaos strategies are as
-untestable as a strategy that ignores `builder.TimeProvider` — it is the injection-decision analogue
-of the time seam. Tests set `() => 0.0` (always inject) or `() => 1.0` (never). Document it as the
-supported test seam.
+The shape follows the existing DTOs exactly: mutable POCOs with parameterless constructors and a
+`ToOptions()` projection, with the delegate members (`EnabledGenerator`, `Randomizer`,
+`FaultGenerator`, `OutcomeGenerator`, `LatencyGenerator`, `Behavior`) left off and layered on
+afterwards with a record `with` expression.
 
-**Needs `InternalsVisibleTo`** for three things: `Internal.StrategyType.Chaos` (for the tagging
-`AddStrategy` overloads), a new internal chaos counter, and `ResilienceEventHandler<T>.Invoke` (to run
-the behavior payload). Same pattern as `Resilion.RateLimiting`.
+**One design question to settle first.** The production guard documented in `chaos.md` is
+`EnabledGenerator = _ => !env.IsProduction()`, a delegate — so it cannot come from configuration,
+and a bindable `Enabled = true` sitting in a config file is a loaded gun pointed at production. A
+chaos DTO should probably **not** expose `Enabled` at all, leaving the kill switch in code and
+making only the rate configurable. Decide that before writing the type.
 
-**Chaos must be innermost, and the validator should say so.** Chaos outside Retry means retry never
-sees the injected fault, so the chaos run *silently tests nothing*. Add `Chaos` to `StrategyType`
-(**appended**, to keep existing ordinals stable) and one **warning** in `OrderingValidator` when a
-chaos strategy is not in the innermost block. Warning rather than error, because stacking several
-chaos strategies innermost is legitimate and a deliberate mid-pipeline injection is conceivable.
+Blocked on nothing; it is additive. `ChaosBehaviorStrategyOptions` is the one that cannot be
+usefully bound, since `Behavior` is required and is a delegate.
 
-Other mechanics worth recording up front: `AddChaosOutcome` is **typed-only** on purpose, because a
-typed strategy added to an untyped pipeline is silently skipped by `TypedStrategyComponent<T>`;
-`ChaosLatencyStrategy` must take `builder.TimeProvider`; all four must override the sync `Execute`
-with real implementations rather than inheriting the base that throws under a
-`SynchronizationContext`; and `FaultGenerator` should be documented as preferable to a static `Fault`,
-because `Outcome<T>.FromException` captures with `ExceptionDispatchInfo` and rethrowing one instance
-repeatedly accumulates stack traces.
+---
 
-**Production safety:** with defaults of `Enabled = true` and a non-zero `InjectionRate`, lead the docs
-with `EnabledGenerator = _ => !env.IsProduction()`.
+### 69. No Chaos Injection on the Standard HTTP Handler
 
-**Release note:** as with #39, `release-nuget.yml`'s hardcoded package count must be data-driven
-first.
+**Status:** Open
+**Type:** Feature
+**Target:** unscheduled
+**Verified:** 2026-10-23 — `grep -n 'Chaos' src/Resilion.Http/*.cs src/Resilion.Http/Internal/*.cs`
+→ no matches. `HttpStandardResilienceOptions` exposes `RateLimiter`, `TotalRequestTimeout`,
+`Retry`, `CircuitBreaker`, `AttemptTimeout` and `RequestReplay`, with no chaos hook.
 
-**Effort:** High.
+**Why**
+
+`AddStandardResilienceHandler` builds a fixed five-strategy pipeline, so there is no way to inject
+chaos into it. That is the pipeline most users will actually run, and therefore the one most worth
+testing — "does my standard handler really retry a 503?" is answerable only by making a 503 happen.
+
+**There is a real workaround, which is why this is unscheduled rather than P1:**
+`AddResilienceHandler(key, builder => …)` takes a pipeline you compose yourself, so you can
+reproduce the standard shape and add chaos innermost. The cost is that you now maintain a copy of
+the standard pipeline's defaults, which will drift from ours.
+
+**Options**
+
+1. **A `Chaos` property on `HttpStandardResilienceOptions`**, appended innermost when set. Smallest
+   surface, but it puts a `Resilion.Chaos` type on a `Resilion.Http` options class, which would
+   make `Resilion.Http` depend on `Resilion.Chaos` — a chaos dependency for every HTTP consumer.
+   Probably disqualifying on its own.
+2. **A separate `AddStandardResilienceHandlerWithChaos` in a `Resilion.Http.Chaos` package**, which
+   depends on both and keeps the base package clean. More packaging for a testing-only feature.
+3. **Expose the standard pipeline's configuration as a reusable builder action**, so a caller can
+   compose it with their own additions without copying the defaults. Solves the drift problem
+   generally, not just for chaos, and adds no cross-package dependency.
+
+(3) looks best and is the only one that helps anyone not doing chaos. Do not start any of them
+without deciding which.
 
 ---
 
@@ -764,6 +800,9 @@ Numbers that have left the active list. **Never reuse a number.**
 | 59 | Hedging drops PipelineName on per-attempt contexts | Fixed. See CHANGELOG `[Unreleased]`. |
 | 60 | Typed-strategy result mismatch silently skips the strategy | Fixed — now throws `InvalidOperationException`. |
 | 44 | `IConfiguration` binding for strategy options | Done — five bindable DTOs in `Resilion.Extensions.Configuration`. See CHANGELOG `[Unreleased]` and [configuration.md](configuration.md). |
+| 40 | `Resilion.Chaos` — chaos engineering | Done — fault, outcome, latency and behavior injection, plus a not-innermost ordering warning. See CHANGELOG `[Unreleased]` and [chaos.md](chaos.md). |
+| 62 | Event handler properties reject a bare lambda | Fixed — `ResilienceEventHandler<TArgs>` is now a delegate returning `ValueTask`, so lambdas and method groups convert. See CHANGELOG `[Unreleased]`. |
+| 30 | FallbackAction/ResilienceEventHandler `Task.Run` missing token | Half closed by #62, which removed the `ResilienceEventHandler` call site entirely. Remainder filed as #70. |
 | 61 | README's synchronous-execution claims are broader than the truth | Fixed — claim scoped, four exceptions documented. |
 | 39 | Resilion.Http — HttpClient integration | Implemented. See CHANGELOG `[Unreleased]`. Residual gaps filed as #63–#66. |
 | 10 | Resilion.Testing package | Deferred; the two core gaps behind it (`CircuitBreakerStateProvider`, public `Pipeline.Name`) shipped instead. See CHANGELOG `[Unreleased]`. |

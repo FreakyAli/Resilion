@@ -276,9 +276,9 @@ internal sealed class TimeoutStrategy : Strategy
     {
         ResilionTelemetry.TimeoutExpirations.Add(1, new(ResilionTelemetry.PipelineNameTag, context.PipelineName), new(ResilionTelemetry.OperationKeyTag, context.OperationKey));
 
-        if (_options.OnTimeout is { } handler && handler.HasHandler)
+        if (_options.OnTimeout is { } handler)
         {
-            await handler.InvokeAsync(new OnTimeoutArgs(context, timeout, elapsed)).ConfigureAwait(false);
+            await handler(new OnTimeoutArgs(context, timeout, elapsed)).ConfigureAwait(false);
         }
 
         return Outcome<TResult>.FromException(
@@ -292,9 +292,9 @@ internal sealed class TimeoutStrategy : Strategy
     {
         ResilionTelemetry.TimeoutExpirations.Add(1, new(ResilionTelemetry.PipelineNameTag, context.PipelineName), new(ResilionTelemetry.OperationKeyTag, context.OperationKey));
 
-        if (_options.OnTimeout is { } handler && handler.HasHandler)
+        if (_options.OnTimeout is { } handler)
         {
-            handler.Invoke(new OnTimeoutArgs(context, timeout, elapsed));
+            handler.InvokeSync(new OnTimeoutArgs(context, timeout, elapsed));
         }
     }
 }

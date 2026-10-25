@@ -22,8 +22,11 @@ public static class HedgingActionGeneratorSample
 
     public static async Task RunAsync()
     {
-        Action<OnHedgingEvent<string>> onHedging = e =>
+        ResilienceEventHandler<OnHedgingEvent<string>> onHedging = e =>
+        {
             Console.WriteLine($"   Launching hedged attempt #{e.AttemptNumber} (failover)");
+            return default;
+        };
 
         var pipeline = Pipeline.Create<string>(b => b.AddHedging(new HedgingStrategyOptions<string>
         {

@@ -98,13 +98,13 @@ services.AddResiliencePipeline<RetryStrategyConfiguration>("api", (b, c) =>
     b.AddRetry(c.ToOptions() with
     {
         ShouldHandle = ex => ex is HttpRequestException,
-        OnRetry = new Action<RetryAttemptEvent>(e =>
-            logger.LogWarning("Retry {Attempt} after {Delay}", e.AttemptNumber, e.RetryDelay)),
+        OnRetry = e =>
+        {
+            logger.LogWarning("Retry {Attempt} after {Delay}", e.AttemptNumber, e.RetryDelay);
+            return default;
+        },
     }));
 ```
-
-> The `new Action<RetryAttemptEvent>(...)` wrapper is required — a bare lambda does not compile
-> against `ResilienceEventHandler<TArgs>`. See [troubleshooting.md](troubleshooting.md).
 
 `ToOptions()` leaves every delegate `null`, so each strategy's own default predicate applies
 untouched when you set none.

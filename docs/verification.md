@@ -137,11 +137,17 @@ wc -l src/Resilion/Retry/RetryStrategy.cs                             # expected
 ## Claims made in the README and docs
 
 ```bash
-# Is the synchronous-execution claim qualified?  (future-plans #61)
-grep -n 'Task.Run' src/Resilion/Fallback/FallbackAction.cs src/Resilion/ResilienceEventHandler.cs
-grep -n 'WaitHandle' src/Resilion/Retry/RetryStrategy.cs
-# Expected today: FallbackAction.cs:64 and ResilienceEventHandler.cs:93 (sync-over-async under a
-# SynchronizationContext); RetryStrategy.cs:170 and :295 (sync delay bypassing TimeProvider).
+# Is the synchronous-execution claim qualified?  (retired #61; see #70 and #9)
+grep -rn 'Task.Run' src/ --include='*.cs' | grep -v /obj/
+grep -rn 'WaitHandle.WaitOne' src/ --include='*.cs' | grep -v /obj/
+# Expected 2026-10-24 — three Task.Run sites:
+#   FallbackAction.cs:64        sync-over-async with no token, tracked as #70
+#   HedgingStrategy.cs:255,332  deliberate, escaping the SynchronizationContext for hedged
+#                               attempts; not a defect and not tracked
+# Three WaitHandle.WaitOne sites, all bypassing TimeProvider and tracked as #9:
+#   RetryStrategy.cs:143, :272 and ChaosLatencyStrategy.cs:56.
+# ResilienceEventHandler no longer appears in either list: it became a delegate in #62 and its
+# synchronous path now clears the SynchronizationContext instead of dispatching to the pool.
 grep -n 'sync-over-async\|No blocking calls\|true sync' README.md docs/comparison-with-polly.md
 # Every hit must be accompanied by the four documented exceptions, or the claim is overbroad.
 

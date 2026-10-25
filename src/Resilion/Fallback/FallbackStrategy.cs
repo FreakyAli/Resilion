@@ -33,9 +33,9 @@ internal sealed class FallbackStrategy<TResult> : Strategy<TResult>
         var fallbackCtx = new FallbackContext<TResult>(outcome, context);
         var fallbackResult = await _options.FallbackAction.ExecuteAsync(fallbackCtx).ConfigureAwait(false);
 
-        if (_options.OnFallback is { } handler && handler.HasHandler)
+        if (_options.OnFallback is { } handler)
         {
-            await handler.InvokeAsync(new OnFallbackEvent<TResult>(outcome, fallbackResult, context))
+            await handler(new OnFallbackEvent<TResult>(outcome, fallbackResult, context))
                 .ConfigureAwait(false);
         }
 
@@ -63,9 +63,9 @@ internal sealed class FallbackStrategy<TResult> : Strategy<TResult>
         var fallbackCtx = new FallbackContext<TResult>(outcome, context);
         var fallbackResult = _options.FallbackAction.Execute(fallbackCtx);
 
-        if (_options.OnFallback is { } handler && handler.HasHandler)
+        if (_options.OnFallback is { } handler)
         {
-            handler.Invoke(new OnFallbackEvent<TResult>(outcome, fallbackResult, context));
+            handler.InvokeSync(new OnFallbackEvent<TResult>(outcome, fallbackResult, context));
         }
 
         StrategyActivity.SetOutcome(activity, "fallback_applied");

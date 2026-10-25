@@ -13,4 +13,8 @@ internal enum StrategyType
     RateLimiter,
     Hedging,
     Custom,
+
+    // Appended, never inserted: the preceding ordinals are load-bearing for tests and benchmarks
+    // that compare recorded strategy sequences.
+    Chaos,
 }

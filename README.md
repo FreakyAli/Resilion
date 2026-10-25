@@ -62,17 +62,20 @@ Every built-in strategy has a **real synchronous implementation** on its own exe
 on WinForms/WPF UI threads, ASP.NET Framework, and anywhere blocking on an async call risks
 deadlock.
 
-Four limits, so you can tell whether this covers your case:
+Five limits, so you can tell whether this covers your case:
 
-- An **async** fallback factory (`FallbackActionAsync`) or an **async** event handler
-  (`OnRetry`, `OnTimeout`, …) is still async work being run from a sync call. When a
-  `SynchronizationContext` is present, Resilion hops to the thread pool to run it — that hop is
-  what avoids the deadlock, but it is sync-over-async. Supply *synchronous* handlers
-  (`Action<TArgs>`, which is the default shape) and this never happens.
+- An **async** fallback factory (`FallbackActionAsync`) is still async work run from a sync call.
+  When a `SynchronizationContext` is present, Resilion hops to the thread pool to run it — that
+  hop is what avoids the deadlock, but it is sync-over-async.
+- An **async** event handler (`OnRetry`, `OnTimeout`, …) is also async work run from a sync call,
+  but it does **not** hop threads: the `SynchronizationContext` is cleared for the duration of the
+  call, so the handler starts on the calling thread and only its continuations go to the pool. A
+  handler that returns `default` therefore costs nothing extra here.
 - **Sync hedging is sequential-only.** Parallel and latency modes need real concurrency, so
   `Execute` throws for them rather than silently degrading.
-- **Sync retry delays are not driven by `TimeProvider`**, so they can't be advanced by
-  `FakeTimeProvider` in tests ([future-plans #9](docs/future-plans.md)).
+- **Sync delays are not driven by `TimeProvider`** — retry backoff and injected chaos latency
+  alike — so they can't be advanced by `FakeTimeProvider` in tests
+  ([future-plans #9](docs/future-plans.md)).
 - A **custom** strategy must override `Execute`; the base implementation throws under a
   `SynchronizationContext` rather than risking a deadlock on your behalf.
 
@@ -100,31 +103,21 @@ var pipeline = Pipeline.Create<HttpResponseMessage>(b => b.AddRetry(
 ```
 
 ### Simple Callbacks
-Assign callbacks directly. No `ValueTask` wrapping for synchronous logging:
-
-```csharp
-Action<RetryAttemptEvent> onRetry = context =>
-    logger.LogWarning("Retry attempt {Attempt}", context.AttemptNumber);
-
-new RetryStrategyOptions { OnRetry = onRetry };
-```
-
-The handler's type has to be stated. `ResilienceEventHandler<TArgs>` converts implicitly from
-`Action<TArgs>` and `Func<TArgs, ValueTask>`, but it is not itself a delegate type, so C# will not
-convert a bare lambda (`CS1660`) or a method group (`CS0428`) to it. A local, an inline cast, or
-`new Action<TArgs>(...)` all work:
+Assign a lambda, a method group, or an async handler — one property takes all three:
 
 ```csharp
 new RetryStrategyOptions
 {
-    OnRetry = new Action<RetryAttemptEvent>(context =>
-        logger.LogWarning("Retry attempt {Attempt}", context.AttemptNumber)),
+    // Synchronous: return default. Allocates nothing — a completed ValueTask is a struct.
+    OnRetry = e => { logger.LogWarning("Retry attempt {Attempt}", e.AttemptNumber); return default; },
 };
+
+new RetryStrategyOptions { OnRetry = LogRetry };                       // method group
+new RetryStrategyOptions { OnRetry = async e => await Track(e) };      // async
 ```
 
-An async handler is the same shape with `Func<TArgs, ValueTask>`. The saving over always-async
-callbacks is real — a synchronous handler runs inline, with no `ValueTask` wrapping — but it costs
-you the one-liner.
+A synchronous handler runs inline on the calling thread, with no thread hop even when a
+`SynchronizationContext` is installed.
 
 ### Composable Pipelines
 Combine pre-built pipelines into larger ones:
@@ -167,6 +160,11 @@ dotnet add package Resilion.RateLimiting
 dotnet add package Resilion.Http
 ```
 
+### Chaos Engineering
+```bash
+dotnet add package Resilion.Chaos
+```
+
 ## Packages & Dependencies
 
 | Package | Purpose | Dependencies |
@@ -175,6 +173,7 @@ dotnet add package Resilion.Http
 | **Resilion.Extensions** | DI registration, pipeline registry, reload, `IConfiguration` binding | Microsoft.Extensions.DependencyInjection.Abstractions, Microsoft.Extensions.Options |
 | **Resilion.RateLimiting** | Rate limiting strategy with multiple algorithms | System.Threading.RateLimiting |
 | **Resilion.Http** | `HttpClient` / `IHttpClientFactory` resilience handlers | Microsoft.Extensions.Http, Resilion.Extensions, Resilion.RateLimiting |
+| **Resilion.Chaos** | Fault, outcome, latency and behavior injection for resilience testing | None |
 
 ## Strategies
 
@@ -445,10 +444,12 @@ src/
   Resilion.Extensions/        DI, pipeline registry, reload, configuration binding
   Resilion.RateLimiting/      Rate limiting strategy
   Resilion.Http/              HttpClient integration (DelegatingHandler)
+  Resilion.Chaos/             Chaos engineering strategies (zero dependencies)
 tests/
   Resilion.Tests/             Core strategy and pipeline tests
   Resilion.Extensions.Tests/  DI and telemetry tests
   Resilion.Http.Tests/        HttpClient handler tests
+  Resilion.Chaos.Tests/       Chaos strategy tests
 benchmarks/
   Resilion.Benchmarks/        Performance benchmarks (BenchmarkDotNet)
 samples/

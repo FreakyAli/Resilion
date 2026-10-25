@@ -179,7 +179,11 @@ public class FallbackStrategyTests
     public async Task Async_OnFallback_IsFired()
     {
         OnFallbackEvent<string>? capturedEvent = null;
-        Action<OnFallbackEvent<string>> onFallback = e => capturedEvent = e;
+        ResilienceEventHandler<OnFallbackEvent<string>> onFallback = e =>
+        {
+            capturedEvent = e;
+            return default;
+        };
 
         var pipeline = Pipeline.Create<string>(b => b.AddFallback(
             new FallbackStrategyOptions<string>

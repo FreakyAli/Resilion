@@ -17,8 +17,11 @@ public static class RateLimiterSample
             QueueLimit = 0,
         });
 
-        Action<OnRateLimitRejectedEvent> onRejected = e =>
+        ResilienceEventHandler<OnRateLimitRejectedEvent> onRejected = e =>
+        {
             Console.WriteLine("   Rejected: rate limit exceeded");
+            return default;
+        };
 
         var pipeline = Pipeline.Create(b => b
             .AddRateLimiter(new RateLimiterStrategyOptions

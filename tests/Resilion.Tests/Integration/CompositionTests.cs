@@ -72,7 +72,11 @@ public class CompositionTests
     public async Task AddPipeline_ComposesTwoPrebuiltPipelines_BothRun()
     {
         var innerCalls = new List<string>();
-        Action<RetryAttemptEvent> onInnerRetry = e => innerCalls.Add("inner-retry");
+        ResilienceEventHandler<RetryAttemptEvent> onInnerRetry = e =>
+        {
+            innerCalls.Add("inner-retry");
+            return default;
+        };
 
         var innerRetryPipeline = Pipeline.Create(b => b.AddRetry(new RetryStrategyOptions
         {

@@ -199,8 +199,6 @@ Resilion.ResilienceContextPool.Rent(System.Threading.CancellationToken cancellat
 Resilion.ResilienceContextPool.ResilienceContextPool(int maxPoolSize = 256) -> void
 Resilion.ResilienceContextPool.Return(Resilion.ResilienceContext! context) -> void
 Resilion.ResilienceEventHandler<TArgs>
-Resilion.ResilienceEventHandler<TArgs>.HasHandler.get -> bool
-Resilion.ResilienceEventHandler<TArgs>.ResilienceEventHandler() -> void
 Resilion.ResilienceProperties
 Resilion.ResilienceProperties.Count.get -> int
 Resilion.ResilienceProperties.GetValue<TValue>(Resilion.ResiliencePropertyKey<TValue> key, TValue defaultValue = default(TValue)) -> TValue
@@ -322,8 +320,6 @@ static Resilion.Pipeline.Create<TResult>(System.Action<Resilion.PipelineBuilder<
 static Resilion.Pipeline.Empty.get -> Resilion.Pipeline!
 static Resilion.Pipeline<TResult>.Empty.get -> Resilion.Pipeline<TResult>!
 static Resilion.ResilienceContextPool.Shared.get -> Resilion.ResilienceContextPool!
-static Resilion.ResilienceEventHandler<TArgs>.implicit operator Resilion.ResilienceEventHandler<TArgs>(System.Action<TArgs>! handler) -> Resilion.ResilienceEventHandler<TArgs>
-static Resilion.ResilienceEventHandler<TArgs>.implicit operator Resilion.ResilienceEventHandler<TArgs>(System.Func<TArgs, System.Threading.Tasks.ValueTask>! handler) -> Resilion.ResilienceEventHandler<TArgs>
 static Resilion.ResiliencePropertyKey<TValue>.operator !=(Resilion.ResiliencePropertyKey<TValue> left, Resilion.ResiliencePropertyKey<TValue> right) -> bool
 static Resilion.ResiliencePropertyKey<TValue>.operator ==(Resilion.ResiliencePropertyKey<TValue> left, Resilion.ResiliencePropertyKey<TValue> right) -> bool
 static Resilion.RetryDelay.Constant(System.TimeSpan delay) -> Resilion.RetryDelay!

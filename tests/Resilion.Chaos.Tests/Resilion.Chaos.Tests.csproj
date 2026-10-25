@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Resilion.Chaos.Tests</RootNamespace>
+    <AssemblyName>Resilion.Chaos.Tests</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Resilion\Resilion.csproj" />
+    <ProjectReference Include="..\..\src\Resilion.Chaos\Resilion.Chaos.csproj" />
+  </ItemGroup>
+
+</Project>

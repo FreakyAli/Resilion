@@ -33,5 +33,6 @@ Resilion.PredicateBuilder<TResult>.HandleInner<TException>(System.Func<TExceptio
 Resilion.PredicateBuilder<TResult>.HandleResult(System.Func<TResult, bool>! predicate) -> Resilion.PredicateBuilder<TResult>!
 Resilion.PredicateBuilder<TResult>.HandleResult(TResult result) -> Resilion.PredicateBuilder<TResult>!
 Resilion.PredicateBuilder<TResult>.PredicateBuilder() -> void
+const Resilion.ResilionTelemetry.ChaosStrategyTag = "chaos.strategy" -> string!
 static Resilion.PredicateBuilder.implicit operator System.Func<System.Exception!, bool>!(Resilion.PredicateBuilder! builder) -> System.Func<System.Exception!, bool>!
 static Resilion.PredicateBuilder<TResult>.implicit operator System.Func<Resilion.Outcome<TResult>, bool>!(Resilion.PredicateBuilder<TResult>! builder) -> System.Func<Resilion.Outcome<TResult>, bool>!

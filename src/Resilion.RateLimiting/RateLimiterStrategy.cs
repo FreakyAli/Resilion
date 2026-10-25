@@ -73,9 +73,9 @@ internal sealed class RateLimiterStrategy : Strategy
 
         Resilion.ResilionTelemetry.RateLimiterRejections.Add(1, new(Resilion.ResilionTelemetry.PipelineNameTag, context.PipelineName), new(Resilion.ResilionTelemetry.OperationKeyTag, context.OperationKey));
 
-        if (_options.OnRejected is { } handler && handler.HasHandler)
+        if (_options.OnRejected is { } handler)
         {
-            await handler.InvokeAsync(new OnRateLimitRejectedEvent(retryAfter, context))
+            await handler(new OnRateLimitRejectedEvent(retryAfter, context))
                 .ConfigureAwait(false);
         }
 
@@ -90,9 +90,9 @@ internal sealed class RateLimiterStrategy : Strategy
 
         Resilion.ResilionTelemetry.RateLimiterRejections.Add(1, new(Resilion.ResilionTelemetry.PipelineNameTag, context.PipelineName), new(Resilion.ResilionTelemetry.OperationKeyTag, context.OperationKey));
 
-        if (_options.OnRejected is { } handler && handler.HasHandler)
+        if (_options.OnRejected is { } handler)
         {
-            handler.Invoke(new OnRateLimitRejectedEvent(retryAfter, context));
+            handler.InvokeSync(new OnRateLimitRejectedEvent(retryAfter, context));
         }
 
         return Outcome<TResult>.FromException(new RateLimitRejectedException(retryAfter));

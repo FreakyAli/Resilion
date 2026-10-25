@@ -117,6 +117,29 @@ internal static class OrderingValidator
             }
         }
 
+        // Warning 4: Chaos strategies must be innermost. A chaos strategy placed outside a Retry
+        // injects its fault before Retry can see it, so the retry never observes the failure and
+        // the chaos run silently tests nothing — the worst outcome for a chaos experiment, since
+        // it looks like a pass. A warning rather than an error because stacking several chaos
+        // strategies innermost is legitimate, and a deliberate mid-pipeline injection (chaos
+        // between an outer and an inner pipeline via AddPipeline) is conceivable.
+        if (positions.TryGetValue(StrategyType.Chaos, out var chaosPositions))
+        {
+            // Chaos entries are innermost exactly when they occupy the final `chaosPositions.Count`
+            // slots, so anything before that boundary has a non-chaos strategy inside it.
+            var innermostBoundary = strategies.Count - chaosPositions.Count;
+            foreach (var chaosPos in chaosPositions)
+            {
+                if (chaosPos < innermostBoundary)
+                {
+                    warnings.Add(
+                        "Chaos strategy at position " + chaosPos + " is not innermost. Strategies " +
+                        "added after it will not observe the injected chaos, so they are not " +
+                        "actually being tested. Chaos strategies should be added last.");
+                }
+            }
+        }
+
         return new OrderingValidationResult(errors, warnings);
     }
 }

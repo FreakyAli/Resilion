@@ -173,7 +173,11 @@ public class RetryStrategyTests
     public async Task Async_OnRetry_FiredForEachRetry()
     {
         var retryEvents = new List<RetryAttemptEvent>();
-        Action<RetryAttemptEvent> onRetry = e => retryEvents.Add(e);
+        ResilienceEventHandler<RetryAttemptEvent> onRetry = e =>
+        {
+            retryEvents.Add(e);
+            return default;
+        };
 
         var callCount = 0;
         var pipeline = Pipeline.Create(b => b.AddRetry(new RetryStrategyOptions
@@ -420,7 +424,11 @@ public class RetryStrategyTests
     {
         var fakeTime = new FakeTimeProvider();
         TimeSpan? capturedDelay = null;
-        Action<RetryAttemptEvent> onRetry = e => capturedDelay = e.RetryDelay;
+        ResilienceEventHandler<RetryAttemptEvent> onRetry = e =>
+        {
+            capturedDelay = e.RetryDelay;
+            return default;
+        };
 
         var pipeline = Pipeline.Create(b =>
         {

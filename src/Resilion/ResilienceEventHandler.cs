@@ -1,109 +1,101 @@
 namespace Resilion;
 
 /// <summary>
-/// A union type that holds either a synchronous <see cref="Action{T}"/> or an asynchronous
-/// <see cref="Func{T, TResult}"/> returning <see cref="ValueTask"/>. Implicit conversions
-/// let the compiler pick the right path automatically.
+/// A strategy event callback. Returns <see cref="ValueTask"/> so one property can accept both a
+/// synchronous and an asynchronous handler.
 /// </summary>
 /// <typeparam name="TArgs">The event arguments type (typically a readonly record struct).</typeparam>
 /// <remarks>
 /// <para>
-/// This solves Polly v8's callback verbosity problem. Polly forces all callbacks to return
-/// <c>ValueTask</c> even when they're synchronous (the 90% case — logging, incrementing counters).
+/// A synchronous handler returns <c>default</c> and costs nothing: a completed
+/// <see cref="ValueTask"/> is a struct, so it allocates no more than an <see cref="Action{T}"/>
+/// would. Only a handler that genuinely suspends allocates, and that is unavoidable.
 /// </para>
 /// <example>
 /// <code>
-/// // Sync — zero overhead, no ValueTask wrapping:
-/// OnRetry = (RetryAttemptEvent e) => logger.Log(e.AttemptNumber)
+/// // Synchronous — the common case.
+/// OnRetry = e => { logger.LogWarning("Retry {Attempt}", e.AttemptNumber); return default; }
 ///
-/// // Async — when genuinely needed:
-/// OnRetry = async (RetryAttemptEvent e) => await telemetry.TrackAsync(e)
+/// // Asynchronous.
+/// OnRetry = async e => await telemetry.TrackAsync(e)
+///
+/// // A method group works too.
+/// OnRetry = LogRetry;
 /// </code>
 /// </example>
+/// <para>
+/// This was a wrapper struct with implicit conversions from <see cref="Action{T}"/> and
+/// <c>Func&lt;TArgs, ValueTask&gt;</c> before 1.0. It let a synchronous handler skip the
+/// <c>return default</c>, but a struct is not a delegate type, so C# would not convert a bare
+/// lambda (<c>CS1660</c>) or a method group (<c>CS0428</c>) to it — every callback had to be
+/// written as <c>new Action&lt;TArgs&gt;(e =&gt; ...)</c>. The wrapper was also documented as
+/// avoiding <c>ValueTask</c> wrapping; measurement showed both shapes allocate 0 B/op for a
+/// synchronous handler, so it was buying syntax, not speed, and charging a compiler error for it.
+/// </para>
 /// </remarks>
-public readonly struct ResilienceEventHandler<TArgs>
+/// <param name="args">The event arguments.</param>
+/// <returns>A <see cref="ValueTask"/> that completes when the handler is done.</returns>
+public delegate ValueTask ResilienceEventHandler<TArgs>(TArgs args);
+
+/// <summary>
+/// Invocation helpers for <see cref="ResilienceEventHandler{TArgs}"/>.
+/// </summary>
+internal static class ResilienceEventHandlerExtensions
 {
-    private readonly Action<TArgs>? _syncHandler;
-    private readonly Func<TArgs, ValueTask>? _asyncHandler;
-
-    private ResilienceEventHandler(Action<TArgs>? syncHandler, Func<TArgs, ValueTask>? asyncHandler)
-    {
-        _syncHandler = syncHandler;
-        _asyncHandler = asyncHandler;
-    }
-
     /// <summary>
-    /// Gets a value indicating whether this handler has been assigned.
+    /// Runs a handler to completion on the calling thread, for the synchronous execution paths.
     /// </summary>
-    public bool HasHandler => _syncHandler is not null || _asyncHandler is not null;
-
-    /// <summary>
-    /// Invokes the handler. If the handler is synchronous, returns a completed <see cref="ValueTask"/>.
-    /// </summary>
-    /// <param name="args">The event arguments.</param>
-    /// <returns>A <see cref="ValueTask"/> representing the completion of the handler.</returns>
-    internal ValueTask InvokeAsync(TArgs args)
-    {
-        if (_syncHandler is not null)
-        {
-            _syncHandler(args);
-            return default;
-        }
-
-        if (_asyncHandler is not null)
-        {
-            return _asyncHandler(args);
-        }
-
-        return default;
-    }
-
-    /// <summary>
-    /// Invokes the handler synchronously. If the handler is async, blocks until completion.
-    /// </summary>
-    /// <param name="args">The event arguments.</param>
     /// <remarks>
-    /// For a genuinely async handler under load with a <see cref="SynchronizationContext"/> present
-    /// (WPF, WinForms, legacy ASP.NET), this costs two threads per invocation — one ThreadPool
-    /// thread running the handler plus the calling thread blocked on it. Prefer
-    /// <see cref="InvokeAsync"/> from an async execution path when possible.
+    /// <para>
+    /// A synchronous handler — one that returns <c>default</c> — completes inline here: no thread
+    /// hop, no blocking, no allocation. That is the 90% case and it stays free.
+    /// </para>
+    /// <para>
+    /// A handler that actually suspends has to be waited on, and waiting on the calling thread
+    /// while a <see cref="SynchronizationContext"/> is installed is the classic deadlock: the
+    /// handler's continuation is posted back to the very thread that is blocked waiting for it.
+    /// The context is therefore cleared for the duration of the call, so any continuation inside
+    /// the handler resumes on the thread pool instead and the wait can complete.
+    /// </para>
+    /// <para>
+    /// Clearing beats the obvious alternative of invoking the handler inside
+    /// <c>Task.Run</c>: that would push <em>every</em> handler onto the thread pool, including the
+    /// synchronous ones that never needed to leave this thread.
+    /// </para>
     /// </remarks>
-    internal void Invoke(TArgs args)
+    internal static void InvokeSync<TArgs>(this ResilienceEventHandler<TArgs> handler, TArgs args)
     {
-        if (_syncHandler is not null)
+        var previous = SynchronizationContext.Current;
+        if (previous is null)
         {
-            _syncHandler(args);
-            return;
-        }
-
-        if (_asyncHandler is not null)
-        {
-            var handler = _asyncHandler;
-
-            if (SynchronizationContext.Current is null)
+            // Nothing to deadlock against.
+            var direct = handler(args);
+            if (direct.IsCompleted)
             {
-                // No context to deadlock against: call directly. Completes synchronously with
-                // no thread hop in the common case (e.g. a handler that checks a cached value).
-                handler(args).GetAwaiter().GetResult();
+                direct.GetAwaiter().GetResult();   // propagates a faulted handler; does not block
                 return;
             }
 
-            // A SynchronizationContext is present — run the handler on the thread pool so its
-            // continuations resume there instead of trying to resume on this (now blocked) thread.
-            Task.Run(() => handler(args).AsTask()).GetAwaiter().GetResult();
+            direct.AsTask().GetAwaiter().GetResult();
+            return;
+        }
+
+        SynchronizationContext.SetSynchronizationContext(null);
+        try
+        {
+            var task = handler(args);
+            if (task.IsCompleted)
+            {
+                task.GetAwaiter().GetResult();
+                return;
+            }
+
+            // Safe to block: with no context captured, the continuation resumes on the pool.
+            task.AsTask().GetAwaiter().GetResult();
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previous);
         }
     }
-
-    /// <summary>
-    /// Implicitly converts a synchronous <see cref="Action{T}"/> to a <see cref="ResilienceEventHandler{TArgs}"/>.
-    /// </summary>
-    public static implicit operator ResilienceEventHandler<TArgs>(Action<TArgs> handler)
-        => new(handler, null);
-
-    /// <summary>
-    /// Implicitly converts an asynchronous <see cref="Func{T, TResult}"/> returning <see cref="ValueTask"/>
-    /// to a <see cref="ResilienceEventHandler{TArgs}"/>.
-    /// </summary>
-    public static implicit operator ResilienceEventHandler<TArgs>(Func<TArgs, ValueTask> handler)
-        => new(null, handler);
 }

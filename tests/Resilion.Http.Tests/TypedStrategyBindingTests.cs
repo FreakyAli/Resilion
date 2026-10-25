@@ -250,12 +250,11 @@ public class TypedStrategyBindingTests
                     MaxRetryAttempts = 1,
                     Delay = RetryDelay.None,
                     ShouldHandle = HttpResiliencePredicates.IsTransient,
-                    // Needs the explicit Action<T>: ResilienceEventHandler<TArgs> is not itself a
-                    // delegate type, so a bare lambda does not convert (CS1660).
-                    OnRetry = new Action<RetryAttemptEvent<HttpResponseMessage>>(args =>
+                    OnRetry = args =>
                     {
                         lock (seen) { seen.Add(args.Context.GetRequestMessage()?.RequestUri); }
-                    }),
+                        return default;
+                    },
                 })));
         using var scope = provider;
 
