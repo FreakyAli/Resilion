@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_No changes yet._
+
+## [1.0.0] - 2026-10-25
+
 ### Added
 
 - **`Resilion.Http` — `HttpClient` and `IHttpClientFactory` integration.** The most common use for
@@ -334,5 +338,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added an XML doc `<remarks>` on `Outcome<T>`'s implicit operator warning about the `Outcome<Exception>` success-vs-failure ambiguity
 - Documented ordering validation (`ThrowOnOrderingErrors`, `SuppressOrderingWarnings`) in `docs/pipelines.md`
 
-[Unreleased]: https://github.com/FreakyAli/Resilion/compare/v1.0.0-pre...HEAD
+[Unreleased]: https://github.com/FreakyAli/Resilion/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/FreakyAli/Resilion/compare/v1.0.0-pre...v1.0.0
 [1.0.0-pre]: https://github.com/FreakyAli/Resilion/releases/tag/v1.0.0-pre
