@@ -121,6 +121,15 @@ internal sealed class ResilienceHandler : DelegatingHandler
                 context).ConfigureAwait(false);
 
             winner = outcome.IsSuccess ? outcome.GetResultOrDefault() : null;
+
+            // Point the winning response back at the original caller request. A retry may have
+            // sent the last attempt via a clone, leaving RequestMessage referencing a disposed
+            // message object after SendAttemptAsync's finally block ran.
+            if (winner is not null && !ReferenceEquals(winner.RequestMessage, request))
+            {
+                winner.RequestMessage = request;
+            }
+
             return outcome.ThrowIfFailed();
         }
         finally

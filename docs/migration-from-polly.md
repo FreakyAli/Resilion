@@ -165,7 +165,7 @@ dotnet add package Resilion.Http
 
 | `Microsoft.Extensions.Http.Resilience` | `Resilion.Http` | Notes |
 |-------|----------|-------|
-| `AddStandardResilienceHandler()` | `AddStandardResilienceHandler()` | Same name, same receiver. Same five strategies, outermost first: rate limiter, total request timeout, retry, circuit breaker, per-attempt timeout. |
+| `AddStandardResilienceHandler()` | `AddStandardResilienceHandler()` | Same name, same receiver. Up to five strategies, outermost first: rate limiter (disabled by default — opt in by setting `HttpStandardResilienceOptions.RateLimiter`), total request timeout, retry, circuit breaker, per-attempt timeout. |
 | `AddStandardHedgingHandler()` | `AddStandardHedgingHandler()` | Hedging in place of retry. Returns `IHttpClientBuilder` for chaining, not a routing builder — see the differences below. |
 | `AddResilienceHandler(name, builder => ...)` | `AddResilienceHandler(key, pb => ...)` | `pb` is a `PipelineBuilder<HttpResponseMessage>`. The key must be unique within the client; registering it twice throws at registration time rather than on first resolve. |
 | `HttpStandardResilienceOptions.{RateLimiter, TotalRequestTimeout, Retry, CircuitBreaker, AttemptTimeout}` | `HttpStandardResilienceOptions` — the same five property names | The container is a mutable class in both libraries. Each *leg* is a Resilion options `record`, so you assign a new one instead of mutating it — see below. |

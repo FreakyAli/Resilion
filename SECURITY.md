@@ -2,8 +2,8 @@
 
 ## Supported Versions
 
-Security fixes are applied to the current minor release and the one before it. Pre-release versions
-are not supported — if you are on a `-pre` build, upgrade to the latest stable release first.
+Security fixes are applied to the current stable release. Pre-release versions are not supported —
+if you are on a `-pre` build, upgrade to the latest stable release first.
 
 | Version | Supported |
 |---------|-----------|

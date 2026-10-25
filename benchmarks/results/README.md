@@ -58,10 +58,17 @@ worth separating them:
 through a real `IHttpClientFactory` graph with an in-memory primary handler, so no socket is
 touched and what remains is pipeline plus per-request bookkeeping.
 
-Unlike the other tables on this page, this one is a **full run**, not `ShortRun` — at three
-iterations the error bars were ±25% and could not separate the two libraries at all. Here the
-relative error ranges from **0.37% to 1.50%** per row (widest on Polly's retry arm), which is what
-makes the differences below separable at all.
+Unlike the other tables on this page, this one is a **full run** (BenchmarkDotNet default job —
+full pilot/warmup/actual stages), not the `ShortRun` used above. To reproduce:
+
+```bash
+dotnet run -c Release --project benchmarks/Resilion.Benchmarks -- --filter '*HttpResilience*'
+```
+
+Drop `-- --filter ...` to run the entire suite. At three iterations (`--job short`) the error bars
+were ±25% and could not separate the two libraries; here the relative error ranges from **0.37% to
+1.50%** per row (widest on Polly's retry arm), which is what makes the differences below separable
+at all.
 
 | Benchmark | Mean | Allocated |
 |-----------|-----:|----------:|

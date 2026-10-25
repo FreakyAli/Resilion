@@ -189,7 +189,7 @@ public sealed class ResiliencePipelineRegistry<TKey> : IPipelineProvider<TKey>, 
 
         if (lazy.IsValueCreated)
         {
-            OnPipelineReplaced?.Invoke(new PipelineReplacedArgs<TKey>(key, null, lazy.Value));
+            RaisePipelineReplaced(new PipelineReplacedArgs<TKey>(key, null, lazy.Value));
         }
 
         return true;
@@ -218,11 +218,25 @@ public sealed class ResiliencePipelineRegistry<TKey> : IPipelineProvider<TKey>, 
 
         if (lazy.IsValueCreated && lazy.Value is IAsyncDisposable disposable)
         {
-            OnPipelineReplaced?.Invoke(
-                new PipelineReplacedArgs<TKey>(key, typeof(TResult), disposable));
+            RaisePipelineReplaced(new PipelineReplacedArgs<TKey>(key, typeof(TResult), disposable));
         }
 
         return true;
+    }
+
+    private void RaisePipelineReplaced(PipelineReplacedArgs<TKey> args)
+    {
+        try
+        {
+            OnPipelineReplaced?.Invoke(args);
+        }
+        catch (Exception ex)
+        {
+            // Prevent a callback exception from propagating into the options monitor's listener
+            // loop and interrupting pipeline reload. Report via Debug so it is visible in
+            // diagnostics without affecting production control flow.
+            System.Diagnostics.Debug.WriteLine($"[Resilion] OnPipelineReplaced callback threw: {ex}");
+        }
     }
 
     /// <summary>

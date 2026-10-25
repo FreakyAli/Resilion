@@ -83,7 +83,8 @@ dotnet build Resilion.sln -c Release -p:ContinuousIntegrationBuild=true --no-inc
 # Is SourceLink / are symbols configured?  (future-plans #52)
 grep -rn 'PublishRepositoryUrl\|EmbedUntrackedSources\|IncludeSymbols\|SymbolPackageFormat\|ContinuousIntegrationBuild\|SourceLink\|DebugType' \
   src/ .github/ --include='*.props' --include='*.csproj' --include='*.yml'
-# Expected today: 0 hits.
+# Expected: hits in src/Directory.Build.props and .github/workflows/release-nuget.yml confirming
+# SourceLink and symbols are configured.
 
 # Do they actually end up in the package? Configuration alone proves nothing.
 dotnet pack src/Resilion/Resilion.csproj -c Release -p:ContinuousIntegrationBuild=true -o "$TMPDIR/rpack"
@@ -100,7 +101,7 @@ grep -n 'dotnet pack\|COUNT\|PROJECTS' .github/workflows/release-nuget.yml
 # length rather than hardcoded. The array must list every src package — as of 1.0.0: Resilion,
 # Resilion.Extensions, Resilion.RateLimiting, Resilion.Http, Resilion.Chaos. A package missing
 # from it is published by nobody and the count assert still passes, so check the array itself,
-# not just the count. (was: three explicit pack lines and a hardcoded `-ne 3`.)
+# not just the count.
 
 # Version stamping
 grep -n 'Version\|VersionPrefix' src/Directory.Build.props
@@ -183,7 +184,7 @@ grep -rn 'TimeProvider.Testing' tests/
 # Vulnerability disclosure policy  (future-plans #53)
 ls SECURITY.md .github/SECURITY.md 2>&1
 # Expected: SECURITY.md exists at the repository root; .github/SECURITY.md does not, and should
-# not — GitHub reads either, and two copies drift. (was: neither existed.)
+# not — GitHub reads either, and two copies drift.
 ```
 
 ## Self-consistency of `future-plans.md`

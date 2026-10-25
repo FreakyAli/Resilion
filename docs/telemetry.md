@@ -24,7 +24,7 @@ instrument name itself (`resilion.retry.attempts`, `resilion.timeout.expirations
 
 | Tag | Example | Notes |
 |-----|---------|-------|
-| `pipeline.name` | `"http-api"` | Name passed to `AddResiliencePipeline()` or the registry key. **Null** for unnamed pipelines, and null for any strategy nested inside hedging — see the gap note below |
+| `pipeline.name` | `"http-api"` | Name passed to `AddResiliencePipeline()` or the registry key. **Null** for unnamed pipelines. |
 | `operation.key` | `"GET /users"` | Custom operation key from `ResilienceContext`. Null unless you set it |
 
 Example: A `resilion.retry.attempts` counter for a named pipeline emits as:
