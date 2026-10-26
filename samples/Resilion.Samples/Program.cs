@@ -12,8 +12,11 @@ Console.WriteLine();
 Console.WriteLine("1. Basic Retry");
 Console.WriteLine("──────────────");
 
-Action<RetryAttemptEvent> onRetry = e =>
+ResilienceEventHandler<RetryAttemptEvent> onRetry = e =>
+{
     Console.WriteLine($"   Retry #{e.AttemptNumber}, waiting {e.RetryDelay.TotalMilliseconds:F0}ms");
+    return default;
+};
 
 var retryPipeline = Pipeline.Create(b => b
     .AddRetry(new RetryStrategyOptions
@@ -46,8 +49,11 @@ Console.WriteLine();
 Console.WriteLine("2. Timeout");
 Console.WriteLine("──────────");
 
-Action<OnTimeoutArgs> onTimeout = e =>
+ResilienceEventHandler<OnTimeoutArgs> onTimeout = e =>
+{
     Console.WriteLine($"   Timed out after {e.ElapsedTime.TotalMilliseconds:F0}ms");
+    return default;
+};
 
 var timeoutPipeline = Pipeline.Create(b => b
     .AddTimeout(new TimeoutStrategyOptions
@@ -78,10 +84,16 @@ Console.WriteLine();
 Console.WriteLine("3. Circuit Breaker");
 Console.WriteLine("──────────────────");
 
-Action<CircuitStateChangedEvent> onOpened = e =>
+ResilienceEventHandler<CircuitStateChangedEvent> onOpened = e =>
+{
     Console.WriteLine($"   Circuit OPENED (was {e.PreviousState})");
-Action<CircuitStateChangedEvent> onClosed = e =>
+    return default;
+};
+ResilienceEventHandler<CircuitStateChangedEvent> onClosed = e =>
+{
     Console.WriteLine($"   Circuit CLOSED (was {e.PreviousState})");
+    return default;
+};
 
 var cbPipeline = Pipeline.Create(b => b
     .AddCircuitBreaker(new CircuitBreakerStrategyOptions
@@ -119,8 +131,11 @@ Console.WriteLine();
 Console.WriteLine("4. Fallback");
 Console.WriteLine("───────────");
 
-Action<OnFallbackEvent<string>> onFallback = e =>
+ResilienceEventHandler<OnFallbackEvent<string>> onFallback = e =>
+{
     Console.WriteLine($"   Fallback activated: {e.Outcome.Exception?.GetType().Name}");
+    return default;
+};
 
 var fallbackPipeline = Pipeline.Create<string>(b => b
     .AddFallback(new FallbackStrategyOptions<string>

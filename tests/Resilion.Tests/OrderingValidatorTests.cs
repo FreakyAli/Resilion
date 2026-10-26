@@ -260,4 +260,90 @@ public class OrderingValidatorTests
         Assert.NotNull(pipeline);
         Assert.Empty(captured);
     }
+
+    // ──────────────────────────────────────────────────────────────────
+    // Chaos must be innermost (Resilion.Chaos)
+    // ──────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ChaosInnermost_NoWarning()
+    {
+        var strategies = new List<StrategyType>
+        {
+            StrategyType.Timeout,
+            StrategyType.Retry,
+            StrategyType.CircuitBreaker,
+            StrategyType.Chaos,
+        };
+
+        var result = OrderingValidator.Validate(strategies);
+        Assert.Empty(result.Errors);
+        Assert.Empty(result.Warnings);
+    }
+
+    [Fact]
+    public void ChaosOutsideRetry_EmitsNotInnermostWarning()
+    {
+        // The chaos fault is injected before Retry can see it, so the retry never observes a
+        // failure and the experiment silently proves nothing.
+        var strategies = new List<StrategyType>
+        {
+            StrategyType.Chaos,
+            StrategyType.Retry,
+        };
+
+        var result = OrderingValidator.Validate(strategies);
+        Assert.Empty(result.Errors);
+        Assert.Contains(result.Warnings, w => w.Contains("not innermost"));
+    }
+
+    [Fact]
+    public void MultipleChaosStrategiesInnermost_NoWarning()
+    {
+        // Stacking chaos strategies at the end is legitimate — latency then fault, say.
+        var strategies = new List<StrategyType>
+        {
+            StrategyType.Timeout,
+            StrategyType.Retry,
+            StrategyType.Chaos,
+            StrategyType.Chaos,
+        };
+
+        var result = OrderingValidator.Validate(strategies);
+
+        // Assert on the chaos rule specifically rather than on an empty collection: the other
+        // rules are free to warn about this shape for their own reasons.
+        Assert.DoesNotContain(result.Warnings, w => w.Contains("not innermost"));
+    }
+
+    [Fact]
+    public void ChaosSplitAcrossThePipeline_WarnsOnlyForTheOuterOne()
+    {
+        var strategies = new List<StrategyType>
+        {
+            StrategyType.Chaos,     // position 0 — not in the trailing chaos block
+            StrategyType.Retry,
+            StrategyType.Chaos,     // position 2 — innermost, fine
+        };
+
+        var result = OrderingValidator.Validate(strategies);
+        var warning = Assert.Single(result.Warnings, w => w.Contains("not innermost"));
+        Assert.Contains("position 0", warning);
+    }
+
+    [Fact]
+    public void ChaosNotInnermost_IsWarningNotError()
+    {
+        // Deliberately advisory: a mid-pipeline injection between an outer and an inner pipeline
+        // is conceivable, so this must not block a build.
+        var strategies = new List<StrategyType>
+        {
+            StrategyType.Chaos,
+            StrategyType.Timeout,
+        };
+
+        var result = OrderingValidator.Validate(strategies);
+        Assert.Empty(result.Errors);
+        Assert.NotEmpty(result.Warnings);
+    }
 }

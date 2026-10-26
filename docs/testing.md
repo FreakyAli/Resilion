@@ -102,7 +102,7 @@ public async Task Circuit_Opens_After_Failures()
 }
 ```
 
-This is a test-only convenience for *observing* state. Production code must not branch on it — see
+This is an observation-only convenience for *inspecting* state. Production code must not branch on it — see
 [circuit-breaker.md](circuit-breaker.md#do-not-gate-execution-on-it).
 
 Alternatively, trip the circuit and verify rejection, which also exercises the caller's path:

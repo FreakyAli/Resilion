@@ -18,7 +18,7 @@ That gives the client, outermost first:
 |---|---|---|
 | 1 | Rate limiter | **off** — see [Rate limiting](#rate-limiting) |
 | 2 | Total request timeout | 30 seconds, across all attempts |
-| 3 | Retry | 3 attempts, jittered exponential backoff from 2s |
+| 3 | Retry | 3 retries — 4 sends including the initial one — jittered exponential backoff from 2s |
 | 4 | Circuit breaker | 10% failure ratio over 30s, minimum throughput 100, break 5s |
 | 5 | Per-attempt timeout | 10 seconds |
 

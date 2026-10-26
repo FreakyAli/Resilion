@@ -121,6 +121,15 @@ internal sealed class ResilienceHandler : DelegatingHandler
                 context).ConfigureAwait(false);
 
             winner = outcome.IsSuccess ? outcome.GetResultOrDefault() : null;
+
+            // Point the winning response back at the original caller request. A retry may have
+            // sent the last attempt via a clone, leaving RequestMessage referencing a disposed
+            // message object after SendAttemptAsync's finally block ran.
+            if (winner is not null && !ReferenceEquals(winner.RequestMessage, request))
+            {
+                winner.RequestMessage = request;
+            }
+
             return outcome.ThrowIfFailed();
         }
         finally
@@ -176,6 +185,11 @@ internal sealed class ResilienceHandler : DelegatingHandler
         {
             if (!ReferenceEquals(message, state.Request))
             {
+                // Point the context back at the caller's live request BEFORE disposing the clone.
+                // Strategy callbacks run after this returns — OnRetry fires between attempts — and
+                // GetRequestMessage() would otherwise hand them a disposed message.
+                context.Properties.Set(HttpResilienceKeys.RequestMessage, state.Request);
+
                 // Disposes the clone and its ByteArrayContent; the shared body array is untouched.
                 message.Dispose();
             }

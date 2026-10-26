@@ -20,11 +20,13 @@ can't safely call `.GetAwaiter().GetResult()` on an async path without risking d
 
 Stated precisely, because this is the reason some people choose Resilion and they deserve the
 exact shape of it: the *strategies* are synchronous, but async work you hand them is still async.
-An async fallback factory or an async event handler is run via a thread-pool hop when a
-`SynchronizationContext` is present — deadlock-safe, but sync-over-async. Sync hedging is
-sequential-only and throws for parallel/latency modes. Sync retry delays bypass `TimeProvider`, so
-they aren't fake-clock testable. Custom strategies must override `Execute` themselves. See the
-"Sync and Async" section of the [README](../README.md) for the list.
+An async fallback factory is run via a thread-pool hop when a `SynchronizationContext` is present
+— deadlock-safe, but sync-over-async. An async event handler avoids the hop: the context is
+cleared for the duration of the call instead, so the handler starts on the calling thread. Sync
+hedging is sequential-only and throws for parallel/latency modes. Sync delays — retry backoff and
+injected chaos latency — bypass `TimeProvider`, so they aren't fake-clock testable. Custom
+strategies must override `Execute` themselves. See the "Sync and Async" section of the
+[README](../README.md) for the list.
 
 **`RetryDelay` as a discriminated union.** Polly's retry options have `Delay`, `BackoffType`,
 `UseJitter`, and `DelayGenerator` as independent properties — nothing stops you from setting
@@ -32,18 +34,15 @@ they aren't fake-clock testable. Custom strategies must override `Execute` thems
 `RetryDelay.Constant/Linear/Exponential/Custom` are mutually exclusive by construction. There's
 exactly one way to configure the delay strategy, and the compiler enforces it.
 
-**Sync callbacks don't pay for `ValueTask`.** Polly's callbacks (`OnRetry`, `OnOpened`, ...) always
-return `ValueTask`, even for a callback that just increments a counter or writes a log line — the
-90% case. Resilion's `ResilienceEventHandler<TArgs>` accepts a plain `Action<TArgs>` *or* an async
-`Func<TArgs, ValueTask>` via implicit conversion, so the common synchronous case runs inline with
-no wrapping.
-
-Honest caveat on the ergonomics, as opposed to the cost: because `ResilienceEventHandler<TArgs>` is
-a wrapper rather than a delegate type, you must name the delegate — `new Action<RetryAttemptEvent>(ctx => ...)`,
-an inline cast, or a typed local. A bare lambda or a method group will not convert. Polly's
-plain-delegate properties take a lambda directly, so Polly wins on brevity here while Resilion wins
-on not allocating a `ValueTask` for a log line. Tracked for a future version — see
-[future-plans.md](future-plans.md).
+**Callbacks take a lambda, a method group, or an async handler.** One property, three shapes:
+`OnRetry = e => { log(e); return default; }`, `OnRetry = LogRetry`, or
+`OnRetry = async e => await TrackAsync(e)`. This is the same shape Polly uses, and Resilion used
+to differ: `ResilienceEventHandler<TArgs>` was a wrapper struct accepting an `Action<TArgs>`, so a
+synchronous handler could skip the `return default`. It was dropped before 1.0 because a struct is
+not a delegate type, so C# refused to convert a bare lambda to it at all — every callback had to be
+written `new Action<RetryAttemptEvent>(e => ...)`. The wrapper was also documented as avoiding
+`ValueTask` wrapping; measured, both shapes allocate 0 B/op for a synchronous handler, so it was
+charging a compiler error for syntax rather than buying speed.
 
 **Simpler API surface.** One static factory (`Pipeline.Create`), one builder per pipeline
 kind, options classes that read the same way every time. No mandatory `PredicateBuilder` (there
@@ -61,9 +60,6 @@ package additionally honours `Retry-After` on 429 and 503 responses, supports pe
 routing, works with synchronous `HttpClient.Send`, and binds its standard options from
 `IConfiguration`. Resilion does none of those yet; `Retry-After` is the one most likely to matter,
 since both libraries retry 429 by default and Resilion does so on blind exponential backoff.
-
-**Chaos engineering.** Polly ships Simmy — fault, outcome, latency, and behavior injection for
-resilience testing in non-production environments. Resilion has no equivalent.
 
 **A dedicated testing package.** Polly has patterns and (community) packages for asserting on
 pipeline behavior in tests. Resilion doesn't have a `Resilion.Testing` package yet — you write
@@ -85,6 +81,7 @@ These were listed here as reasons to choose Polly and no longer are:
 | Dynamic reload via `IOptionsMonitor` | `AddResiliencePipeline<TOptions>` rebuilds on options change |
 | A way to observe circuit state | `CircuitBreakerStateProvider` |
 | `IConfiguration` binding for strategy options | `Resilion.Extensions.Configuration` DTOs with `ToOptions()` |
+| Chaos engineering (Polly's Simmy) | `Resilion.Chaos` — fault, outcome, latency and behavior injection |
 
 ## Roadmap to close the gap
 
@@ -93,7 +90,6 @@ Every item above that Resilion doesn't have yet is tracked with a concrete desig
 
 | Feature | Priority | Target | future-plans.md item |
 |---------|----------|--------|----------------------|
-| `Resilion.Chaos` — chaos engineering | Medium | unscheduled | #40 |
 | Telemetry enrichment | Lower | unscheduled | #45 |
 
 **None of these ship in 1.0.** 1.0 is scoped to making what the library already claims actually

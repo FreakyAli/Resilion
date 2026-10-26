@@ -136,6 +136,30 @@ public class StrategyConfigurationBindingTests
             .Build();
 
     [Fact]
+    public void BareNumber_BindsAsDays_NotSeconds()
+    {
+        // Pins the foot-gun documented in configuration.md: ConfigurationBinder goes through
+        // TimeSpan.Parse, which reads an unqualified number as days. "5" is five days, and
+        // nothing warns. If this ever starts throwing or binding as seconds, the doc is wrong.
+        var config = Config(("Timeout", "5"));
+        var dto = new TimeoutStrategyConfiguration();
+        config.Bind(dto);
+
+        Assert.Equal(TimeSpan.FromDays(5), dto.Timeout);
+        Assert.NotEqual(TimeSpan.FromSeconds(5), dto.Timeout);
+    }
+
+    [Fact]
+    public void FullTimeSpanForm_BindsAsWritten()
+    {
+        var config = Config(("Timeout", "00:00:05"));
+        var dto = new TimeoutStrategyConfiguration();
+        config.Bind(dto);
+
+        Assert.Equal(TimeSpan.FromSeconds(5), dto.Timeout);
+    }
+
+    [Fact]
     public void BindsFromConfiguration_IncludingTimeSpanStrings()
     {
         var config = Config(

@@ -98,13 +98,13 @@ services.AddResiliencePipeline<RetryStrategyConfiguration>("api", (b, c) =>
     b.AddRetry(c.ToOptions() with
     {
         ShouldHandle = ex => ex is HttpRequestException,
-        OnRetry = new Action<RetryAttemptEvent>(e =>
-            logger.LogWarning("Retry {Attempt} after {Delay}", e.AttemptNumber, e.RetryDelay)),
+        OnRetry = e =>
+        {
+            logger.LogWarning("Retry {Attempt} after {Delay}", e.AttemptNumber, e.RetryDelay);
+            return default;
+        },
     }));
 ```
-
-> The `new Action<RetryAttemptEvent>(...)` wrapper is required — a bare lambda does not compile
-> against `ResilienceEventHandler<TArgs>`. See [troubleshooting.md](troubleshooting.md).
 
 `ToOptions()` leaves every delegate `null`, so each strategy's own default predicate applies
 untouched when you set none.
@@ -137,7 +137,9 @@ That is well-defined: a one-minute constant delay, capped at ten seconds.
 ## Binding notes
 
 - **`TimeSpan` binds from a string** in `"[d.]hh:mm:ss"` form — `"00:00:05"`, `"00:01:30"`,
-  `"1.00:00:00"`. A bare number does not bind.
+  `"1.00:00:00"`. **Always write the full form.** A bare number *does* bind, but
+  `TimeSpan.Parse` reads it as **days**, so `"Timeout": "5"` is five days, not five seconds, and
+  nothing warns you.
 - **Enums bind from their member name**, case-insensitively: `"Kind": "exponential"` works.
 - **Validation happens at `Add*` time, not at bind time.** `ToOptions()` returns the record, and
   the record's own `Validate()` runs when the strategy is added — so a `MaxRetryAttempts` of `-1`

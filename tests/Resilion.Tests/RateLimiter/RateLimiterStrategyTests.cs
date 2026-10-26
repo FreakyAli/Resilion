@@ -170,7 +170,11 @@ public class RateLimiterStrategyTests
         });
 
         OnRateLimitRejectedEvent? capturedEvent = null;
-        Action<OnRateLimitRejectedEvent> onRejected = e => capturedEvent = e;
+        ResilienceEventHandler<OnRateLimitRejectedEvent> onRejected = e =>
+        {
+            capturedEvent = e;
+            return default;
+        };
 
         var pipeline = Pipeline.Create(b => b.AddRateLimiter(new RateLimiterStrategyOptions
         {

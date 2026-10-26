@@ -22,6 +22,7 @@ This gives you retry, circuit breaker, timeout, fallback, and hedging — zero e
 | `Resilion.RateLimiting` | When you need rate limiting (wraps `System.Threading.RateLimiting`) |
 | `Resilion.Http` | When you call HTTP APIs through `IHttpClientFactory` or `HttpClient` |
 | `Resilion.Extensions` | When you use DI (`IServiceCollection`) for dependency injection |
+| `Resilion.Chaos` | When you want to verify your resilience works by injecting faults, latency or bad results |
 
 > **OpenTelemetry metrics**: The `ResilionTelemetry` meter is defined in the core `Resilion` package and can be consumed independently. The `Resilion.Extensions` package provides convenient integration with `IServiceCollection` for DI-based registration.
 
@@ -37,8 +38,10 @@ Resilion                      (zero dependencies)
   ├── Resilion.Extensions     + Microsoft.Extensions.DependencyInjection.Abstractions
   │                           + Microsoft.Extensions.Options
   │
-  └── Resilion.Http           + Microsoft.Extensions.Http
-                              + Resilion.Extensions, Resilion.RateLimiting
+  ├── Resilion.Http           + Microsoft.Extensions.Http
+  │                           + Resilion.Extensions, Resilion.RateLimiting
+  │
+  └── Resilion.Chaos          (no further dependencies)
 ```
 
 Every satellite package references `Resilion` — NuGet pulls it in transitively, so installing one

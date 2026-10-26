@@ -108,24 +108,28 @@ Same applies to `AddHedging`.
 
 ---
 
-## ResilienceEventHandler won't accept my lambda
+## My callback doesn't compile
 
-**Problem**: `CS1660: Cannot convert lambda expression to type 'ResilienceEventHandler<T>?'`
+**Problem**: `CS0029: Cannot implicitly convert type 'System.Action<T>' to 'ResilienceEventHandler<T>'`
 
-**Cause**: C# can't chain two implicit conversions (lambda → `Action<T>` → `ResilienceEventHandler<T>`).
+**Cause**: you are on pre-1.0 code, or carrying a pre-1.0 example. `ResilienceEventHandler<TArgs>`
+used to be a wrapper struct with implicit conversions from `Action<TArgs>`; since 1.0 it is a
+delegate returning `ValueTask`.
 
-**Fix**: Assign to a typed variable first:
+**Fix**: drop the wrapper and return `default` from a synchronous handler.
 
 ```csharp
-// Won't compile directly in options initializer
-OnRetry = (RetryAttemptEvent e) => logger.Log(e.AttemptNumber)  // CS1660
+// Before 1.0 — the wrapper was mandatory, because a lambda could not convert to a struct (CS1660).
+OnRetry = new Action<RetryAttemptEvent>(e => logger.Log(e.AttemptNumber))
 
-// Works — explicit Action<T>
-Action<RetryAttemptEvent> onRetry = e => logger.Log(e.AttemptNumber);
-// Then: OnRetry = onRetry
+// 1.0 onwards.
+OnRetry = e => { logger.Log(e.AttemptNumber); return default; }
+OnRetry = LogRetry;                             // method groups work too
+OnRetry = async e => await TrackAsync(e);       // as does async
 ```
 
----
+Returning `default` costs nothing: `ValueTask` is a struct, so a synchronous handler allocates
+exactly as much as an `Action<T>` would, which is zero.
 
 ## Hedging sync path throws for parallel/latency mode
 

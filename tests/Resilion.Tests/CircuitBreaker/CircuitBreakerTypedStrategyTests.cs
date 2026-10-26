@@ -129,9 +129,21 @@ public class CircuitBreakerTypedStrategyTests
         var opened = new List<CircuitStateChangedEvent>();
         var halfOpened = new List<CircuitStateChangedEvent>();
         var closed = new List<CircuitStateChangedEvent>();
-        Action<CircuitStateChangedEvent> onOpened = e => opened.Add(e);
-        Action<CircuitStateChangedEvent> onHalfOpened = e => halfOpened.Add(e);
-        Action<CircuitStateChangedEvent> onClosed = e => closed.Add(e);
+        ResilienceEventHandler<CircuitStateChangedEvent> onOpened = e =>
+        {
+            opened.Add(e);
+            return default;
+        };
+        ResilienceEventHandler<CircuitStateChangedEvent> onHalfOpened = e =>
+        {
+            halfOpened.Add(e);
+            return default;
+        };
+        ResilienceEventHandler<CircuitStateChangedEvent> onClosed = e =>
+        {
+            closed.Add(e);
+            return default;
+        };
 
         var pipeline = Pipeline.Create<int>(b =>
         {

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+_No changes yet._
+
+## [1.0.0] - 2026-10-25
+
 ### Added
 
 - **`Resilion.Http` — `HttpClient` and `IHttpClientFactory` integration.** The most common use for
@@ -90,6 +94,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `AddResiliencePipeline` overload with `TryAddKeyedSingleton`, so a duplicate call does not add a
   second descriptor. **Incompatible with reload by construction** (a keyed singleton resolves once
   for the container's lifetime), which is documented on both sides and pinned by a test
+- **`Resilion.Chaos` — fault, outcome, latency and behavior injection.** Verify that your
+  resilience configuration actually does something, by making the failures happen on purpose.
+  `AddChaosFault`, `AddChaosOutcome`, `AddChaosLatency` and `AddChaosBehavior` on both builders.
+  Zero third-party dependencies — it references `Resilion` and nothing else.
+  See [docs/chaos.md](docs/chaos.md)
+  - **Chaos must be innermost, and the pipeline warns when it isn't.** A chaos strategy outside a
+    retry injects its fault before the retry can observe it, so the retry never sees a failure and
+    the experiment passes while proving nothing. That is the worst possible failure for a chaos
+    run — silent and positive — so it is diagnosed rather than left to be discovered. A warning
+    rather than an error, because stacking several chaos strategies at the end is legitimate
+  - **`Randomizer` is the supported test seam**, not polish: injection is a coin flip, so without
+    it every assertion about chaos would be statistical. `() => 0.0` always injects, `() => 1.0`
+    never does, and the randomizer is consulted on every decision with no short-circuit so those
+    hold at any configured rate
+  - `AddChaosLatency` takes `builder.TimeProvider`, so `FakeTimeProvider` drives injected delays.
+    The synchronous path waits on `CancellationToken.WaitHandle` and cannot be driven by a fake
+    clock — the same limitation as synchronous retry delays, documented on both
+  - **Generators always take precedence over their static counterparts**, decided in one shared
+    place so the four strategies cannot drift apart. A bad static rate throws at `Add*` time where
+    the stack trace points at your configuration; a generator returning an out-of-range value is
+    clamped, because it runs mid-execution where throwing would be indistinguishable from an
+    injected fault
+  - **`AddChaosOutcome` is typed-only on purpose.** A `Strategy<TResult>` cannot run in a pipeline
+    of a different result type, so an untyped overload would be a trap with no correct use
+  - Injections increment `resilion.chaos.injections` on the existing `Resilion` meter — one
+    `.AddMeter("Resilion")` still covers everything — tagged with the new public
+    `ResilionTelemetry.ChaosStrategyTag`. The counter counts injections, not decisions: a
+    `FaultGenerator` returning `null` skips injection and does not increment
+  - **The defaults inject.** `Enabled` is `true` and `InjectionRate` is `0.001`. The docs lead with
+    `EnabledGenerator = _ => !env.IsProduction()` rather than mentioning it in passing
+
 - `Resilion.Extensions.Configuration` — five bindable DTOs (`RetryStrategyConfiguration`,
   `RetryDelayConfiguration`, `TimeoutStrategyConfiguration`, `CircuitBreakerStrategyConfiguration`,
   `HedgingStrategyConfiguration`) that project into the real options records with `ToOptions()`.
@@ -115,6 +150,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   never observes a reload. Both rules are now written down where they are looked for
 
 ### Changed
+- **`ResilienceEventHandler<TArgs>` is now a delegate returning `ValueTask`, not a wrapper
+  struct.** The obvious way to write a callback now compiles:
+
+  ```csharp
+  OnRetry = e => { logger.LogWarning("Retry {Attempt}", e.AttemptNumber); return default; }
+  OnRetry = LogRetry;                          // method groups too
+  OnRetry = async e => await TrackAsync(e);    // and async
+  ```
+
+  The struct held either an `Action<TArgs>` or a `Func<TArgs, ValueTask>` behind implicit
+  conversions, which let a synchronous handler skip the `return default`. But a struct is not a
+  delegate type, and C# will not convert a lambda to one, so **every** callback had to be written
+  `new Action<RetryAttemptEvent>(e => ...)` — a bare lambda failed with `CS1660` and a method
+  group with `CS0428`. The README's own example, and the type's own XML doc example, were both
+  uncompilable
+  - **The justification for the wrapper did not survive measurement.** It was documented as
+    avoiding `ValueTask` wrapping for synchronous callbacks. A synchronous handler returning
+    `default` allocates **0 B/op**, exactly as an `Action<T>` does, because `ValueTask` is a
+    struct; only a handler that genuinely suspends allocates, and the wrapper paid that too. It
+    was buying syntax, not speed, and charging a compiler error for it
+  - **The synchronous path got faster under a `SynchronizationContext`.** It used to push async
+    handlers onto the thread pool via `Task.Run` to avoid the classic deadlock. It now clears the
+    context for the duration of the call instead, so the continuation resumes on the pool while
+    the handler itself still starts on the calling thread — which means a **synchronous** handler
+    no longer hops threads at all in WPF, WinForms or legacy ASP.NET. Both behaviours are pinned
+    by tests that fail if the context is not cleared or if the old `Task.Run` returns
+  - This removes `ResilienceEventHandler<TArgs>.HasHandler` and its two implicit conversion
+    operators from the public surface. The 17 callback properties keep their spelling —
+    `ResilienceEventHandler<TArgs>?` — but the `?` now means a nullable reference rather than
+    `Nullable<T>` over a struct, so `.HasValue` and `.Value` no longer apply. Pattern matching
+    (`is { } handler`) works unchanged either way
 - `Resilion.Extensions` no longer references `Microsoft.Extensions.Logging.Abstractions`. It had
   been declared since the package was created and used by nothing — no `ILogger` in any source
   file — so consumers restored it for nothing and the dependency implied a logging integration
@@ -146,6 +212,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   must not be lifted into production code
 
 ### Fixed
+- **`CloneRequest` handed retry callbacks a disposed request.** The per-attempt clone is disposed
+  as soon as the attempt returns, but strategy callbacks run after that — so `OnRetry` calling
+  `context.GetRequestMessage()` got a disposed message and threw on touching its content. The
+  context now points back at the caller's live request before the clone is disposed
+- **The HTTP replay mode was re-resolved on every handler rotation.** Working it out re-runs the
+  caller's `configure` delegate, and `IHttpClientFactory` rebuilds the handler chain roughly every
+  two minutes, so the delegate ran for the life of the application and took any side effect in it
+  along. Resolved once now
+- **Hedging spans could end with no `outcome` tag.** The two early returns taken when an attempt
+  succeeds before the launch loop finishes skipped `SetOutcome`, so a successful hedged call
+  produced a span that was present in the trace but silent about what happened
+- **A reloadable pipeline rebuilt on changes to unrelated named options.**
+  `IOptionsMonitor.OnChange` fires for every named instance of the options type, and the
+  subscription ignored which one changed — so a pipeline bound to `"billing"` rebuilt whenever
+  `"api"` changed
+- `RegistryDispose_DisposesReloadSubscriptions` asserted nothing about disposal and passed with
+  the feature removed. It now uses a monitor that records whether its subscription was disposed
 
 - **Timeout cancellation classification is now race-free.** `WasCancelledByTimeout` read
   `linkedCts.IsCancellationRequested && !userToken.IsCancellationRequested` as two separate reads,
@@ -272,5 +355,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added an XML doc `<remarks>` on `Outcome<T>`'s implicit operator warning about the `Outcome<Exception>` success-vs-failure ambiguity
 - Documented ordering validation (`ThrowOnOrderingErrors`, `SuppressOrderingWarnings`) in `docs/pipelines.md`
 
-[Unreleased]: https://github.com/FreakyAli/Resilion/compare/v1.0.0-pre...HEAD
+[Unreleased]: https://github.com/FreakyAli/Resilion/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/FreakyAli/Resilion/compare/v1.0.0-pre...v1.0.0
 [1.0.0-pre]: https://github.com/FreakyAli/Resilion/releases/tag/v1.0.0-pre

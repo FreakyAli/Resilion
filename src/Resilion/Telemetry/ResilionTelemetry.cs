@@ -31,6 +31,16 @@ public static class ResilionTelemetry
     /// </summary>
     public const string OperationKeyTag = "operation.key";
 
+    /// <summary>
+    /// Tag key identifying which chaos strategy injected, on
+    /// <c>resilion.chaos.injections</c>. Emitted only by the <c>Resilion.Chaos</c> package.
+    /// </summary>
+    /// <remarks>
+    /// Chaos shares the <see cref="MeterName"/> meter rather than declaring its own, so a single
+    /// <c>.AddMeter("Resilion")</c> picks up injections alongside every other instrument.
+    /// </remarks>
+    public const string ChaosStrategyTag = "chaos.strategy";
+
     // Pipeline-level execution count and duration instruments are planned for a future
     // telemetry-wrapping component. They are intentionally omitted here rather than declared
     // unused — the per-strategy counters below are the only instruments this meter emits today.
@@ -58,4 +68,8 @@ public static class ResilionTelemetry
     internal static readonly Counter<long> RateLimiterRejections = Meter.CreateCounter<long>(
         "resilion.rate_limiter.rejections",
         description: "Rate limiter rejections.");
+
+    internal static readonly Counter<long> ChaosInjections = Meter.CreateCounter<long>(
+        "resilion.chaos.injections",
+        description: "Chaos injections performed.");
 }

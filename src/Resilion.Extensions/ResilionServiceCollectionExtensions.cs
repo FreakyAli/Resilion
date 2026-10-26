@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
@@ -121,7 +122,7 @@ public static class ResilionServiceCollectionExtensions
     /// dictionary lookup.
     /// </para>
     /// </remarks>
-    public static IServiceCollection AddResiliencePipeline<TOptions>(
+    public static IServiceCollection AddResiliencePipeline<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] TOptions>(
         this IServiceCollection services,
         string name,
         Action<PipelineBuilder, TOptions> configure)
@@ -140,7 +141,7 @@ public static class ResilionServiceCollectionExtensions
     /// </param>
     /// <param name="configure">Configures the builder from the current options value.</param>
     /// <returns>The service collection for chaining.</returns>
-    public static IServiceCollection AddResiliencePipeline<TOptions>(
+    public static IServiceCollection AddResiliencePipeline<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] TOptions>(
         this IServiceCollection services,
         string name,
         string? optionsName,
@@ -170,7 +171,7 @@ public static class ResilionServiceCollectionExtensions
     /// <param name="name">The pipeline name.</param>
     /// <param name="configure">Configures the builder from the current options value.</param>
     /// <returns>The service collection for chaining.</returns>
-    public static IServiceCollection AddResiliencePipeline<TResult, TOptions>(
+    public static IServiceCollection AddResiliencePipeline<TResult, [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] TOptions>(
         this IServiceCollection services,
         string name,
         Action<PipelineBuilder<TResult>, TOptions> configure)
@@ -191,7 +192,7 @@ public static class ResilionServiceCollectionExtensions
     /// </param>
     /// <param name="configure">Configures the builder from the current options value.</param>
     /// <returns>The service collection for chaining.</returns>
-    public static IServiceCollection AddResiliencePipeline<TResult, TOptions>(
+    public static IServiceCollection AddResiliencePipeline<TResult, [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] TOptions>(
         this IServiceCollection services,
         string name,
         string? optionsName,
@@ -330,7 +331,7 @@ internal sealed class RegistryConfigurator : IRegistryConfigurator
 /// Registers a pipeline factory that reads <typeparamref name="TOptions"/> at build time, and
 /// invalidates the cached pipeline whenever those options change.
 /// </summary>
-internal sealed class MonitoredPipelineConfigurator<TOptions> : IPipelineConfigurator
+internal sealed class MonitoredPipelineConfigurator<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] TOptions> : IPipelineConfigurator
     where TOptions : class
 {
     private readonly string _name;
@@ -357,7 +358,17 @@ internal sealed class MonitoredPipelineConfigurator<TOptions> : IPipelineConfigu
 
         // IOptionsMonitor<T>.OnChange is declared as returning IDisposable?, and a custom monitor
         // implementation may legitimately return null. The registry owns whatever we get.
-        var subscription = monitor.OnChange((_, _) => registry.InvalidatePipeline(_name));
+        //
+        // Filter on the changed name: OnChange fires for every named instance of TOptions, so a
+        // pipeline bound to "billing" would otherwise rebuild whenever "api" changed. The monitor
+        // reports the default instance as null.
+        var subscription = monitor.OnChange((_, changedName) =>
+        {
+            if (Matches(changedName))
+            {
+                registry.InvalidatePipeline(_name);
+            }
+        });
         if (subscription is not null)
         {
             registry.AddReloadSubscription(subscription);
@@ -366,10 +377,21 @@ internal sealed class MonitoredPipelineConfigurator<TOptions> : IPipelineConfigu
 
     private TOptions CurrentValue(IOptionsMonitor<TOptions> monitor)
         => _optionsName is null ? monitor.CurrentValue : monitor.Get(_optionsName);
+
+    /// <summary>
+    /// Whether a change notification for <paramref name="changedName"/> concerns this pipeline's
+    /// options instance. <see cref="IOptionsMonitor{TOptions}"/> reports the default instance as
+    /// <see langword="null"/>.
+    /// </summary>
+    private bool Matches(string? changedName)
+        => string.Equals(
+            changedName ?? Options.DefaultName,
+            _optionsName ?? Options.DefaultName,
+            StringComparison.Ordinal);
 }
 
 /// <summary>The typed counterpart of <see cref="MonitoredPipelineConfigurator{TOptions}"/>.</summary>
-internal sealed class MonitoredTypedPipelineConfigurator<TResult, TOptions> : IPipelineConfigurator
+internal sealed class MonitoredTypedPipelineConfigurator<TResult, [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicParameterlessConstructor)] TOptions> : IPipelineConfigurator
     where TOptions : class
 {
     private readonly string _name;
@@ -392,7 +414,14 @@ internal sealed class MonitoredTypedPipelineConfigurator<TResult, TOptions> : IP
 
         registry.RegisterPipeline<TResult>(_name, builder => _configure(builder, CurrentValue(monitor)));
 
-        var subscription = monitor.OnChange((_, _) => registry.InvalidatePipeline<TResult>(_name));
+        // See MonitoredPipelineConfigurator for why the changed name is filtered.
+        var subscription = monitor.OnChange((_, changedName) =>
+        {
+            if (Matches(changedName))
+            {
+                registry.InvalidatePipeline<TResult>(_name);
+            }
+        });
         if (subscription is not null)
         {
             registry.AddReloadSubscription(subscription);
@@ -401,6 +430,17 @@ internal sealed class MonitoredTypedPipelineConfigurator<TResult, TOptions> : IP
 
     private TOptions CurrentValue(IOptionsMonitor<TOptions> monitor)
         => _optionsName is null ? monitor.CurrentValue : monitor.Get(_optionsName);
+
+    /// <summary>
+    /// Whether a change notification for <paramref name="changedName"/> concerns this pipeline's
+    /// options instance. <see cref="IOptionsMonitor{TOptions}"/> reports the default instance as
+    /// <see langword="null"/>.
+    /// </summary>
+    private bool Matches(string? changedName)
+        => string.Equals(
+            changedName ?? Options.DefaultName,
+            _optionsName ?? Options.DefaultName,
+            StringComparison.Ordinal);
 }
 
 internal sealed class PipelineConfigurator : IPipelineConfigurator

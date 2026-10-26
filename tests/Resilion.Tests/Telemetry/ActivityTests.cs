@@ -159,6 +159,29 @@ public class ActivityTests
         Assert.Contains("Hedging", tracker.Names());
     }
 
+    [Fact]
+    public async Task Async_HedgingSucceedsOnAnEarlyReturn_SpanStillRecordsTheOutcome()
+    {
+        // Sequential mode returns as soon as an attempt succeeds, before the loop finishes. Those
+        // early returns used to skip SetOutcome, so a hedged call that succeeded produced a span
+        // with no outcome tag — present in the trace, silent about what happened.
+        using var tracker = new ActivityTracker("async-hedging-early-return");
+        var pipeline = Pipeline.Create<int>(b =>
+        {
+            b.Name = "async-hedging-early-return";
+            b.AddHedging(new HedgingStrategyOptions<int>
+            {
+                MaxHedgedAttempts = 3,
+                HedgingDelay = System.Threading.Timeout.InfiniteTimeSpan,
+            });
+        });
+
+        Assert.Equal(1, await pipeline.ExecuteAsync(ct => new ValueTask<int>(1)));
+
+        var hedging = Assert.Single(tracker.Stopped.Where(a => a.OperationName == "Hedging"));
+        Assert.Equal("success", hedging.Tags.FirstOrDefault(t => t.Key == "outcome").Value);
+    }
+
     // ─── Tag shape ──────────────────────────────────────────────────────────────────────────
 
     [Fact]

@@ -67,9 +67,9 @@ internal sealed class RetryStrategy : Strategy
             ResilionTelemetry.RetryAttempts.Add(1, new(ResilionTelemetry.PipelineNameTag, context.PipelineName), new(ResilionTelemetry.OperationKeyTag, context.OperationKey));
 
             // Fire OnRetry callback.
-            if (_options.OnRetry is { } handler && handler.HasHandler)
+            if (_options.OnRetry is { } handler)
             {
-                await handler.InvokeAsync(
+                await handler(
                     new RetryAttemptEvent(retryNumber, delay, outcome.Exception!, context))
                     .ConfigureAwait(false);
             }
@@ -132,9 +132,9 @@ internal sealed class RetryStrategy : Strategy
 
             ResilionTelemetry.RetryAttempts.Add(1, new(ResilionTelemetry.PipelineNameTag, context.PipelineName), new(ResilionTelemetry.OperationKeyTag, context.OperationKey));
 
-            if (_options.OnRetry is { } handler && handler.HasHandler)
+            if (_options.OnRetry is { } handler)
             {
-                handler.Invoke(new RetryAttemptEvent(retryNumber, delay, outcome.Exception!, context));
+                handler.InvokeSync(new RetryAttemptEvent(retryNumber, delay, outcome.Exception!, context));
             }
 
             if (delay > TimeSpan.Zero)
@@ -205,9 +205,9 @@ internal sealed class RetryStrategy<TResult> : Strategy<TResult>
 
             ResilionTelemetry.RetryAttempts.Add(1, new(ResilionTelemetry.PipelineNameTag, context.PipelineName), new(ResilionTelemetry.OperationKeyTag, context.OperationKey));
 
-            if (_options.OnRetry is { } handler && handler.HasHandler)
+            if (_options.OnRetry is { } handler)
             {
-                await handler.InvokeAsync(
+                await handler(
                     new RetryAttemptEvent<TResult>(retryNumber, delay, outcome, context))
                     .ConfigureAwait(false);
             }
@@ -262,9 +262,9 @@ internal sealed class RetryStrategy<TResult> : Strategy<TResult>
 
             ResilionTelemetry.RetryAttempts.Add(1, new(ResilionTelemetry.PipelineNameTag, context.PipelineName), new(ResilionTelemetry.OperationKeyTag, context.OperationKey));
 
-            if (_options.OnRetry is { } handler && handler.HasHandler)
+            if (_options.OnRetry is { } handler)
             {
-                handler.Invoke(new RetryAttemptEvent<TResult>(retryNumber, delay, outcome, context));
+                handler.InvokeSync(new RetryAttemptEvent<TResult>(retryNumber, delay, outcome, context));
             }
 
             if (delay > TimeSpan.Zero)

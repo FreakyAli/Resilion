@@ -66,8 +66,8 @@ public sealed class HttpStandardResilienceOptions
         new() { Timeout = TimeSpan.FromSeconds(30) };
 
     /// <summary>
-    /// Gets or sets the retry options. Defaults to 3 attempts with jittered exponential backoff
-    /// from 2 seconds.
+    /// Gets or sets the retry options. Defaults to 3 <em>retries</em> — four sends in total,
+    /// counting the initial one — with jittered exponential backoff from 2 seconds.
     /// </summary>
     public RetryStrategyOptions<HttpResponseMessage> Retry { get; set; } = new()
     {

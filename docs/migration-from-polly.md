@@ -12,7 +12,7 @@ fastest path if you already know Polly.
 | `new ResiliencePipelineBuilder().Add...().Build()` | `Pipeline.Create(b => b.Add...)` | Static factory instead of `new` + fluent `Build()`. |
 | `RetryStrategyOptions` (Delay + BackoffType + UseJitter + DelayGenerator) | `RetryStrategyOptions` (`Delay = RetryDelay.___`) | `RetryDelay` is a discriminated union (`Constant`/`Linear`/`Exponential`/`Custom`) — mutually exclusive by construction, no silent overrides between properties. |
 | `CircuitBreakerStrategyOptions.FailureRatio` | `CircuitBreakerStrategyOptions.FailureRatioThreshold` | Same concept, renamed for clarity. |
-| `Func<Args, ValueTask>` callbacks (`OnRetry`, `OnOpened`, ...) | `ResilienceEventHandler<TArgs>` | Converts implicitly from `Action<TArgs>` *or* `Func<TArgs, ValueTask>`, so a synchronous callback (logging, counters) runs inline with no `ValueTask` allocated. The delegate must be named, though: it is a wrapper struct, not a delegate type, so a bare lambda is `CS1660` and a method group is `CS0428`. Polly's plain-delegate properties take a lambda directly. See [future-plans.md](future-plans.md) #62. |
+| `Func<Args, ValueTask>` callbacks (`OnRetry`, `OnOpened`, ...) | `ResilienceEventHandler<TArgs>` | Same shape — a delegate returning `ValueTask` — so a Polly callback ports across unchanged. Lambdas, method groups and `async` lambdas all convert. |
 | `FallbackAction` (always a delegate) | `FallbackAction<TResult>` | Implicit conversion from a constant value, a sync factory, *or* an async factory — pick whichever fits, the compiler resolves it. |
 | `ResiliencePipelineRegistry<TKey>` | `ResiliencePipelineRegistry<TKey>` (same name) | Resilion additionally exposes `IPipelineProvider<TKey>` — a read-only view for consumers that only retrieve pipelines, never register them. |
 | `Microsoft.Extensions.Http.Resilience` | `Resilion.Http` | `AddStandardResilienceHandler()`, `AddStandardHedgingHandler()` and `AddResilienceHandler(key, ...)` on `IHttpClientBuilder`, under the same names. See [HTTP](#http-migrating-from-microsoftextensionshttpresilience) below. |
@@ -136,30 +136,19 @@ var pipeline = Pipeline.Create<HttpResponseMessage>(b => b.AddFallback(
 ## Key differences to internalize
 
 - **`RetryDelay` discriminated union vs. Polly's `BackoffType` enum + separate properties.** In Polly, `Delay`, `BackoffType`, `UseJitter`, and `DelayGenerator` are independent properties that can be set inconsistently (e.g. `DelayGenerator` set alongside `BackoffType`, with unclear precedence). In Resilion, `RetryDelay.Constant/Linear/Exponential/Custom` are mutually exclusive by construction — there's exactly one way to configure the delay strategy.
-- **Callbacks accept a sync `Action`, but you must name the delegate.** `ResilienceEventHandler<TArgs>`'s implicit conversions mean a synchronous callback (the 90% case) doesn't pay for `ValueTask` wrapping, and async callbacks still work when genuinely needed. The cost is brevity: because the handler is a wrapper struct rather than a delegate type, implicit conversion can't give a lambda a target type, so `OnRetry = e => ...` fails with `CS1660` and `OnRetry = LogRetry` with `CS0428`. Write a typed local, an inline cast, or `new Action<TArgs>(...)`:
+- **Callbacks are the same shape as Polly's.** `ResilienceEventHandler<TArgs>` is a delegate
+  returning `ValueTask`, so a Polly callback ports across unchanged:
 
   ```csharp
-  // Polly — a lambda goes straight in
-  var polly = new ResiliencePipelineBuilder()
-      .AddRetry(new Polly.Retry.RetryStrategyOptions
-      {
-          OnRetry = args => { logger.LogWarning("retry {Attempt}", args.AttemptNumber); return default; },
-      })
-      .Build();
+  // Polly
+  OnRetry = args => { logger.LogWarning("retry {Attempt}", args.AttemptNumber); return default; }
+
+  // Resilion — identical
+  OnRetry = e => { logger.LogWarning("retry {Attempt}", e.AttemptNumber); return default; }
   ```
 
-  ```csharp
-  // Resilion — the delegate type has to be named somewhere
-  var onRetry = new Action<RetryAttemptEvent>(e => logger.LogWarning("retry {Attempt}", e.AttemptNumber));
 
-  var pipeline = Pipeline.Create(b => b.AddRetry(new RetryStrategyOptions
-  {
-      MaxRetryAttempts = 3,
-      OnRetry = onRetry,
-  }));
-  ```
-
-  Polly wins on brevity here; Resilion wins on not allocating a `ValueTask` for a log line. Tracked as [future-plans.md](future-plans.md) #62.
+  Both libraries behave identically here since 1.0.
 - **`FallbackAction<T>` implicit conversion** — a constant, a sync factory (`Func<Outcome<T>, T>`), or an async factory (`Func<Outcome<T>, ValueTask<T>>`) all convert implicitly. Pick whichever shape your fallback logic naturally has.
 - **True sync execution, not sync-over-async.** Resilion's `Execute()` path uses real synchronous primitives (`Thread.Sleep`, `WaitHandle`) rather than blocking on an async path. This matters for ASP.NET Framework, WinForms/WPF, and any code that can't safely use `.GetAwaiter().GetResult()`.
 - **`Pipeline.Create()` static factory** vs. `new ResiliencePipelineBuilder().Build()` — a small ergonomic difference, but it's the idiomatic entry point throughout Resilion's docs and samples.
@@ -176,7 +165,7 @@ dotnet add package Resilion.Http
 
 | `Microsoft.Extensions.Http.Resilience` | `Resilion.Http` | Notes |
 |-------|----------|-------|
-| `AddStandardResilienceHandler()` | `AddStandardResilienceHandler()` | Same name, same receiver. Same five strategies, outermost first: rate limiter, total request timeout, retry, circuit breaker, per-attempt timeout. |
+| `AddStandardResilienceHandler()` | `AddStandardResilienceHandler()` | Same name, same receiver. Up to five strategies, outermost first: rate limiter (disabled by default — opt in by setting `HttpStandardResilienceOptions.RateLimiter`), total request timeout, retry, circuit breaker, per-attempt timeout. |
 | `AddStandardHedgingHandler()` | `AddStandardHedgingHandler()` | Hedging in place of retry. Returns `IHttpClientBuilder` for chaining, not a routing builder — see the differences below. |
 | `AddResilienceHandler(name, builder => ...)` | `AddResilienceHandler(key, pb => ...)` | `pb` is a `PipelineBuilder<HttpResponseMessage>`. The key must be unique within the client; registering it twice throws at registration time rather than on first resolve. |
 | `HttpStandardResilienceOptions.{RateLimiter, TotalRequestTimeout, Retry, CircuitBreaker, AttemptTimeout}` | `HttpStandardResilienceOptions` — the same five property names | The container is a mutable class in both libraries. Each *leg* is a Resilion options `record`, so you assign a new one instead of mutating it — see below. |

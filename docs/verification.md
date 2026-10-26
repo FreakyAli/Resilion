@@ -46,7 +46,9 @@ grep -rn '\.Add(1' src/ --include='*.cs' | grep -v '/obj/' | wc -l
 
 # Does hedging copy PipelineName to per-attempt contexts?  (future-plans #59)
 grep -n 'PipelineName\|OperationKey\|ContinueOnCapturedContext' src/Resilion/Hedging/HedgingStrategy.cs
-# Expected today: OperationKey and ContinueOnCapturedContext are copied; PipelineName is NOT.
+# Expected: PipelineName, OperationKey and ContinueOnCapturedContext are all copied to the
+# per-attempt contexts, on both the async and sync paths. (was: PipelineName was omitted, so every
+# strategy nested inside hedging emitted a null pipeline.name tag.)
 ```
 
 ## Public API surface
@@ -81,7 +83,8 @@ dotnet build Resilion.sln -c Release -p:ContinuousIntegrationBuild=true --no-inc
 # Is SourceLink / are symbols configured?  (future-plans #52)
 grep -rn 'PublishRepositoryUrl\|EmbedUntrackedSources\|IncludeSymbols\|SymbolPackageFormat\|ContinuousIntegrationBuild\|SourceLink\|DebugType' \
   src/ .github/ --include='*.props' --include='*.csproj' --include='*.yml'
-# Expected today: 0 hits.
+# Expected: hits in src/Directory.Build.props and .github/workflows/release-nuget.yml confirming
+# SourceLink and symbols are configured.
 
 # Do they actually end up in the package? Configuration alone proves nothing.
 dotnet pack src/Resilion/Resilion.csproj -c Release -p:ContinuousIntegrationBuild=true -o "$TMPDIR/rpack"
@@ -94,8 +97,11 @@ unzip -l "$TMPDIR/rpack"/Resilion.*.snupkg | grep '\.pdb'      # expect lib/net8
 
 # How many packages does the release workflow expect?
 grep -n 'dotnet pack\|COUNT\|PROJECTS' .github/workflows/release-nuget.yml
-# Today: three explicit pack lines and a hardcoded `-ne 3`. Every new package breaks
-# every release until this is data-driven.
+# Expected: one pack loop over a PROJECTS array, with EXPECTED_PACKAGE_COUNT derived from its
+# length rather than hardcoded. The array must list every src package — as of 1.0.0: Resilion,
+# Resilion.Extensions, Resilion.RateLimiting, Resilion.Http, Resilion.Chaos. A package missing
+# from it is published by nobody and the count assert still passes, so check the array itself,
+# not just the count.
 
 # Version stamping
 grep -n 'Version\|VersionPrefix' src/Directory.Build.props
@@ -137,11 +143,17 @@ wc -l src/Resilion/Retry/RetryStrategy.cs                             # expected
 ## Claims made in the README and docs
 
 ```bash
-# Is the synchronous-execution claim qualified?  (future-plans #61)
-grep -n 'Task.Run' src/Resilion/Fallback/FallbackAction.cs src/Resilion/ResilienceEventHandler.cs
-grep -n 'WaitHandle' src/Resilion/Retry/RetryStrategy.cs
-# Expected today: FallbackAction.cs:64 and ResilienceEventHandler.cs:93 (sync-over-async under a
-# SynchronizationContext); RetryStrategy.cs:170 and :295 (sync delay bypassing TimeProvider).
+# Is the synchronous-execution claim qualified?  (retired #61; see #70 and #9)
+grep -rn 'Task.Run' src/ --include='*.cs' | grep -v /obj/
+grep -rn 'WaitHandle.WaitOne' src/ --include='*.cs' | grep -v /obj/
+# Expected 2026-10-24 — three Task.Run sites:
+#   FallbackAction.cs:64        sync-over-async with no token, tracked as #70
+#   HedgingStrategy.cs:255,332  deliberate, escaping the SynchronizationContext for hedged
+#                               attempts; not a defect and not tracked
+# Three WaitHandle.WaitOne sites, all bypassing TimeProvider and tracked as #9:
+#   RetryStrategy.cs:143, :272 and ChaosLatencyStrategy.cs:56.
+# ResilienceEventHandler no longer appears in either list: it became a delegate in #62 and its
+# synchronous path now clears the SynchronizationContext instead of dispatching to the pool.
 grep -n 'sync-over-async\|No blocking calls\|true sync' README.md docs/comparison-with-polly.md
 # Every hit must be accompanied by the four documented exceptions, or the claim is overbroad.
 
@@ -165,10 +177,14 @@ grep -n 'coverlet\|CodeCoverage\|TestingPlatformDotnetTestSupport' tests/Directo
 
 # Test-dependency drift
 grep -rn 'TimeProvider.Testing' tests/
-# Expected today: 8.0.0 in Resilion.Tests, 9.0.0 in Resilion.Extensions.Tests — inconsistent.
+# Expected: a single reference in tests/Directory.Build.props pinning 9.0.0 for every test
+# project, and no per-project references. (was: 8.0.0 in Resilion.Tests and 9.0.0 in
+# Resilion.Extensions.Tests, so the fake clock under test was not the same one everywhere.)
 
 # Vulnerability disclosure policy  (future-plans #53)
-ls SECURITY.md .github/SECURITY.md 2>&1        # expected today: neither exists
+ls SECURITY.md .github/SECURITY.md 2>&1
+# Expected: SECURITY.md exists at the repository root; .github/SECURITY.md does not, and should
+# not — GitHub reads either, and two copies drift.
 ```
 
 ## Self-consistency of `future-plans.md`

@@ -165,7 +165,7 @@ public class TimeoutStrategyTests
         var fakeTime = new FakeTimeProvider();
         OnTimeoutArgs? capturedArgs = null;
 
-        Action<OnTimeoutArgs> onTimeout = args => { capturedArgs = args; };
+        ResilienceEventHandler<OnTimeoutArgs> onTimeout = args => { capturedArgs = args; return default; };
 
         var pipeline = Pipeline.Create(b =>
         {

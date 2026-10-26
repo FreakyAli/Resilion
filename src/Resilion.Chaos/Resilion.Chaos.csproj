@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PackageId>Resilion.Chaos</PackageId>
+    <RootNamespace>Resilion.Chaos</RootNamespace>
+    <AssemblyName>Resilion.Chaos</AssemblyName>
+    <Description>Chaos engineering strategies for Resilion. Inject faults, outcomes, latency and custom behaviour into a pipeline to verify your resilience actually works.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Resilion.Chaos.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Resilion\Resilion.csproj" />
+  </ItemGroup>
+
+</Project>

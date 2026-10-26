@@ -113,7 +113,8 @@ public class HttpResilienceHandlerBenchmarks
     {
         var services = new ServiceCollection();
         services.AddHttpClient("bench")
-            .ConfigurePrimaryHttpMessageHandler(() => new EchoHandler());
+            .ConfigurePrimaryHttpMessageHandler(() => new EchoHandler())
+            .ConfigureHttpClient(c => c.Timeout = System.Threading.Timeout.InfiniteTimeSpan);
         return services.BuildServiceProvider();
     }
 
@@ -127,6 +128,7 @@ public class HttpResilienceHandlerBenchmarks
         services.AddHttpClient("bench")
             .ConfigurePrimaryHttpMessageHandler(() =>
                 retry ? new FailOnceHandler() : new EchoHandler())
+            .ConfigureHttpClient(c => c.Timeout = System.Threading.Timeout.InfiniteTimeSpan)
             .AddStandardResilienceHandler((o, sp) =>
             {
                 // Matched to Polly's default, which enables one.

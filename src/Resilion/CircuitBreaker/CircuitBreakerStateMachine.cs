@@ -206,25 +206,25 @@ internal sealed class CircuitBreakerStateMachine
         switch (e.CurrentState)
         {
             case CircuitState.Open:
-                if (_onOpened is { } onOpened && onOpened.HasHandler)
+                if (_onOpened is { } onOpened)
                 {
-                    await onOpened.InvokeAsync(e).ConfigureAwait(false);
+                    await onOpened(e).ConfigureAwait(false);
                 }
 
                 break;
 
             case CircuitState.Closed:
-                if (_onClosed is { } onClosed && onClosed.HasHandler)
+                if (_onClosed is { } onClosed)
                 {
-                    await onClosed.InvokeAsync(e).ConfigureAwait(false);
+                    await onClosed(e).ConfigureAwait(false);
                 }
 
                 break;
 
             case CircuitState.HalfOpen:
-                if (_onHalfOpened is { } onHalfOpened && onHalfOpened.HasHandler)
+                if (_onHalfOpened is { } onHalfOpened)
                 {
-                    await onHalfOpened.InvokeAsync(e).ConfigureAwait(false);
+                    await onHalfOpened(e).ConfigureAwait(false);
                 }
 
                 break;
@@ -245,25 +245,25 @@ internal sealed class CircuitBreakerStateMachine
         switch (e.CurrentState)
         {
             case CircuitState.Open:
-                if (_onOpened is { } onOpened && onOpened.HasHandler)
+                if (_onOpened is { } onOpened)
                 {
-                    onOpened.Invoke(e);
+                    onOpened.InvokeSync(e);
                 }
 
                 break;
 
             case CircuitState.Closed:
-                if (_onClosed is { } onClosed && onClosed.HasHandler)
+                if (_onClosed is { } onClosed)
                 {
-                    onClosed.Invoke(e);
+                    onClosed.InvokeSync(e);
                 }
 
                 break;
 
             case CircuitState.HalfOpen:
-                if (_onHalfOpened is { } onHalfOpened && onHalfOpened.HasHandler)
+                if (_onHalfOpened is { } onHalfOpened)
                 {
-                    onHalfOpened.Invoke(e);
+                    onHalfOpened.InvokeSync(e);
                 }
 
                 break;
