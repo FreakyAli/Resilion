@@ -53,8 +53,8 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
                     var completed = await attempts[^1].ConfigureAwait(false);
                     if (!_options.ShouldHandleOutcome(completed))
                     {
-                        // Success — no need for more attempts.
-                        StrategyActivity.SetOutcome(activity, "success");
+                        // No need for more attempts.
+                        StrategyActivity.SetOutcome(activity, completed.IsSuccess ? "success" : "failure");
                         return completed;
                     }
                 }
@@ -75,7 +75,7 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
                         var completed = await completedTask.ConfigureAwait(false);
                         if (!_options.ShouldHandleOutcome(completed))
                         {
-                            StrategyActivity.SetOutcome(activity, "success");
+                            StrategyActivity.SetOutcome(activity, completed.IsSuccess ? "success" : "failure");
                             return completed;
                         }
 
@@ -196,7 +196,7 @@ internal sealed class HedgingStrategy<TResult> : Strategy<TResult>
 
             if (!_options.ShouldHandleOutcome(lastOutcome))
             {
-                StrategyActivity.SetOutcome(activity, "success");
+                StrategyActivity.SetOutcome(activity, lastOutcome.IsSuccess ? "success" : "failure");
                 return lastOutcome;
             }
 

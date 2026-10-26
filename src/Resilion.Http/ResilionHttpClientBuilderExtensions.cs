@@ -1,4 +1,5 @@
 using System.Net.Http;
+using System.Runtime.CompilerServices;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Resilion;
 using Resilion.Extensions;
@@ -281,19 +282,23 @@ public static class ResilionHttpClientBuilderExtensions
         bool sequentialAttempts,
         Func<IServiceProvider, HttpRequestReplay> resolveReplay)
     {
-        // Resolved once, not per handler. Working out the replay mode means running the caller's
-        // configure delegate again, and IHttpClientFactory rebuilds the handler chain roughly
-        // every two minutes — so without this the delegate runs for the lifetime of the app, and
-        // any side effect in it runs with it. Lazy's default mode is publication-safe, so
-        // concurrent first resolutions agree on one value.
-        var replay = new Lazy<HttpRequestReplay>(
-            () => resolveReplay(AccessorServices(accessor, pipelineKey)));
+        // Resolved once per root provider, not per handler rotation. Working out the replay mode
+        // means running the caller's configure delegate again, and IHttpClientFactory rebuilds the
+        // handler chain roughly every two minutes — so without caching the delegate runs for the
+        // lifetime of the app. ConditionalWeakTable keys by root provider identity, so two
+        // ServiceProviders built from the same ServiceCollection each get their own Lazy and
+        // their own resolved replay mode. Lazy's default mode is publication-safe, so concurrent
+        // first resolutions on the same provider agree on one value.
+        var replayCache = new ConditionalWeakTable<IServiceProvider, Lazy<HttpRequestReplay>>();
 
         builder.AddHttpMessageHandler(sp =>
         {
             // Assigned immediately before GetPipeline, which is the only call that can trigger the
-            // lazy build that reads it. See RootProviderAccessor for why this indirection exists.
-            accessor.Services = sp.GetRequiredService<HttpResilienceRootProvider>().Services;
+            // pipeline's lazy build that reads it. See RootProviderAccessor for why this indirection exists.
+            var root = sp.GetRequiredService<HttpResilienceRootProvider>().Services;
+            accessor.Services = root;
+
+            var replay = replayCache.GetValue(root, r => new Lazy<HttpRequestReplay>(() => resolveReplay(r)));
 
             var pipeline = sp.GetRequiredService<IPipelineProvider<string>>()
                 .GetPipeline<HttpResponseMessage>(pipelineKey);

@@ -26,11 +26,11 @@ internal sealed class ChaosLatencyStrategy : Strategy
 
             if (_options.OnLatencyInjected is { } handler)
             {
-                await handler(new OnChaosLatencyArgs(context, latency)).ConfigureAwait(false);
+                await handler(new OnChaosLatencyArgs(context, latency)).ConfigureAwait(context.ContinueOnCapturedContext);
             }
 
             // Through the builder's TimeProvider, so FakeTimeProvider drives this in tests.
-            await Task.Delay(latency, _timeProvider, context.CancellationToken).ConfigureAwait(false);
+            await Task.Delay(latency, _timeProvider, context.CancellationToken).ConfigureAwait(context.ContinueOnCapturedContext);
         }
 
         return await callback(context).ConfigureAwait(context.ContinueOnCapturedContext);

@@ -20,7 +20,9 @@ public class ReviewRegressionTests
         var stub = StubHttpMessageHandler.WithStatuses(
             HttpStatusCode.InternalServerError, HttpStatusCode.OK);
 
-        var observed = new List<Exception?>();
+        // Declared before the lambda so the closure can capture it; assigned before SendAsync.
+        HttpRequestMessage? originalMessage = null;
+        HttpRequestMessage? observedRequest = null;
 
         var (provider, client) = TestClientFactory.Build(stub, b =>
             b.AddStandardResilienceHandler(o =>
@@ -32,18 +34,8 @@ public class ReviewRegressionTests
                     Delay = RetryDelay.None,
                     OnRetry = args =>
                     {
-                        try
-                        {
-                            var request = args.Context.GetRequestMessage();
-                            // Touching the content is what surfaces a disposed message.
-                            _ = request?.Content?.Headers.ContentLength;
-                            observed.Add(null);
-                        }
-                        catch (Exception ex)
-                        {
-                            observed.Add(ex);
-                        }
-
+                        // Capture for identity check after the call completes.
+                        observedRequest = args.Context.GetRequestMessage();
                         return default;
                     },
                 };
@@ -55,11 +47,13 @@ public class ReviewRegressionTests
         {
             Content = JsonContent.Create(new { value = 1 }),
         };
+        originalMessage = message;
 
         (await client.SendAsync(message)).Dispose();
 
-        var failure = Assert.Single(observed);
-        Assert.Null(failure);
+        // The context must expose the caller's live request, not the disposed per-attempt clone.
+        Assert.True(ReferenceEquals(observedRequest, originalMessage),
+            "OnRetry received a different HttpRequestMessage instance than the caller's original.");
     }
 
     [Fact]

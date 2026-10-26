@@ -21,11 +21,11 @@ internal sealed class ChaosBehaviorStrategy : Strategy
 
             // Not wrapped in try/catch: a behavior that throws is a fault the pipeline should
             // see, which is the whole point of injecting it.
-            await _options.Behavior!(new ChaosGeneratorArgs(context)).ConfigureAwait(false);
+            await _options.Behavior!(new ChaosGeneratorArgs(context)).ConfigureAwait(context.ContinueOnCapturedContext);
 
             if (_options.OnBehaviorInjected is { } handler)
             {
-                await handler(new OnChaosBehaviorArgs(context)).ConfigureAwait(false);
+                await handler(new OnChaosBehaviorArgs(context)).ConfigureAwait(context.ContinueOnCapturedContext);
             }
         }
 
